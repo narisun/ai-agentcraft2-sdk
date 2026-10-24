@@ -48,3 +48,10 @@ def test_a_verdict_is_up_or_down(tmp_path: Path) -> None:
     )
     with pytest.raises(ValidationFailed, match="verdict"):
         load_feedback(path)
+
+
+def test_a_missing_feedback_file_is_an_explained_error_not_a_traceback(tmp_path: Path) -> None:
+    with pytest.raises(ValidationFailed) as raised:
+        load_feedback(tmp_path / "nowhere.jsonl")
+    assert "cannot be read" in raised.value.message
+    assert "FileNotFoundError" in str(raised.value.actual)

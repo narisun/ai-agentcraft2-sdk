@@ -22,6 +22,7 @@ from agentcraft2_core.contracts.diagnostics import (
     OperationSummary,
     TokenUsage,
 )
+from agentcraft2_core.observability.errors import raised_at
 
 _LOG = logging.getLogger(__name__)
 _LINKS: ContextVar[DiagnosticLinks | None] = ContextVar("diagnostic_links", default=None)
@@ -90,7 +91,11 @@ class Diagnostics:
                 active.complete = False
             _LOG.warning(
                 "diagnostics.write_failed",
-                extra={"error_type": type(error).__name__, "request_id": context.request_id},
+                extra={
+                    "error_type": type(error).__name__,
+                    "error_at": raised_at(error),
+                    "request_id": context.request_id,
+                },
             )
 
     def begin_attempt(self, context: RequestContext, ref: AttemptRef) -> None:
@@ -154,7 +159,11 @@ class Diagnostics:
                 active.complete = False
             _LOG.warning(
                 "diagnostics.invalid_metadata",
-                extra={"error_type": type(error).__name__, "request_id": context.request_id},
+                extra={
+                    "error_type": type(error).__name__,
+                    "error_at": raised_at(error),
+                    "request_id": context.request_id,
+                },
             )
 
     async def decide(
@@ -185,7 +194,11 @@ class Diagnostics:
                 active.complete = False
             _LOG.warning(
                 "diagnostics.invalid_metadata",
-                extra={"error_type": type(error).__name__, "request_id": context.request_id},
+                extra={
+                    "error_type": type(error).__name__,
+                    "error_at": raised_at(error),
+                    "request_id": context.request_id,
+                },
             )
 
     @asynccontextmanager
@@ -231,7 +244,11 @@ class Diagnostics:
             except Exception as error:  # noqa: BLE001 - invalid optional metadata cannot replace chat
                 _LOG.warning(
                     "diagnostics.invalid_metadata",
-                    extra={"error_type": type(error).__name__, "request_id": context.request_id},
+                    extra={
+                        "error_type": type(error).__name__,
+                        "error_at": raised_at(error),
+                        "request_id": context.request_id,
+                    },
                 )
             finally:
                 _ACTIVE.reset(token)

@@ -14,6 +14,7 @@ from agentcraft2_core.contracts import (
     ConfigurationError,
     OptionsModel,
     ToolRegistry,
+    describe,
 )
 
 __all__ = ["ABSENT_REVISION", "FileRegistryOptions", "FileRegistrySource"]
@@ -37,8 +38,10 @@ def _read(path: Path, kind: str) -> RegistryDocument | None:
         return None
     try:
         content = path.read_bytes()
-    except OSError:
-        raise ConfigurationError(f"{what}: the file could not be read as text") from None
+    except OSError as problem:
+        raise ConfigurationError(
+            f"{what}: the file could not be read ({describe(problem)})"
+        ) from None
     return RegistryDocument(content=content, suffix=path.suffix, what=what)
 
 

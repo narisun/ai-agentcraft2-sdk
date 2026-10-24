@@ -179,7 +179,9 @@ class FramingInterceptor(Generic[ResponseT]):
             text = result
         elif result is None or isinstance(result, dict | list | tuple | int | float | bool):
             try:
-                text = json.dumps(result, ensure_ascii=False)
+                # default=str: a result holding a date or a decimal is still data, and is
+                # framed like any other, as the guardrail check already reads it.
+                text = json.dumps(result, ensure_ascii=False, default=str)
             except (TypeError, ValueError):
                 request.evidence.add(result_framed=False)
                 return result

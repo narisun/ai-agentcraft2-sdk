@@ -18,7 +18,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from agentcraft2_core.contracts import ValidationFailed, is_schema
+from agentcraft2_core.contracts import ValidationFailed, describe, is_schema
 from agentcraft2_core.evaluation.cases import EvalCase
 from agentcraft2_core.evaluation.report import EvalReport
 from agentcraft2_core.evaluation.run import run_eval
@@ -73,11 +73,21 @@ def load_interactions(path: Path) -> list[Interaction]:
     """Read every interaction in a JSONL file. Blank lines are skipped.
 
     Raises:
-        ValidationFailed: If a line is not JSON or carries another schema.
-            The message names the line.
+        ValidationFailed: If the file cannot be read, a line is not JSON or carries
+            another schema, or a request ID is missing or used twice. The message
+            names the line, or says why the file could not be read.
     """
     interactions: list[Interaction] = []
-    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as problem:
+        raise ValidationFailed(
+            f"the interactions file {path} cannot be read",
+            expected="a UTF-8 JSONL file with one interaction object per line",
+            actual=describe(problem),
+        ) from problem
+    first_line: dict[str, int] = {}
+    for number, line in enumerate(text.splitlines(), start=1):
         if not line.strip():
             continue
         where = f"{path.name}, line {number}"
@@ -98,9 +108,25 @@ def load_interactions(path: Path) -> list[Interaction]:
                 expected=f"schema {INTERACTION_SCHEMA}",
                 actual=actual_schema,
             )
+        request_id = str(data.get("request_id", ""))
+        if not request_id:
+            raise ValidationFailed(
+                f"{where} has no request_id",
+                expected="the request ID that names the interaction",
+                actual="a missing or empty request_id",
+                fix="export the interactions again with their request IDs",
+            )
+        if request_id in first_line:
+            raise ValidationFailed(
+                f"{where} repeats request_id {request_id!r}",
+                expected="one line per request",
+                actual=f"the same request_id on line {first_line[request_id]}",
+                fix="remove the duplicate line; each case is named by its request ID",
+            )
+        first_line[request_id] = number
         interactions.append(
             Interaction(
-                request_id=str(data.get("request_id", "")),
+                request_id=request_id,
                 thread_id=str(data.get("thread_id", "")),
                 question=str(data.get("question", "")),
                 answer=str(data.get("answer", "")),
@@ -164,6 +190,20 @@ async def score_interactions(
     ``require_no_regression`` against a saved baseline, ``by_tag("down")`` for
     the answers people rejected.
     """
+    ids = [item.request_id for item in interactions]
+    repeated = sorted({i for i in ids if ids.count(i) > 1})
+    if "" in ids or repeated:
+        # Each case is named by its request ID and scored on the answer recorded under it.
+        raise ValidationFailed(
+            "the interactions cannot be told apart by request ID",
+            expected="a distinct, non-empty request_id on every interaction",
+            actual=" and ".join(
+                [
+                    *(["an empty request_id"] if "" in ids else []),
+                    *([f"repeated {', '.join(map(repr, repeated))}"] if repeated else []),
+                ]
+            ),
+        )
     answers = {item.request_id: item.answer for item in interactions}
 
     async def recorded(case: EvalCase) -> str:

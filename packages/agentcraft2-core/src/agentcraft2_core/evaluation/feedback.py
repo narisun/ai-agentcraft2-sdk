@@ -9,7 +9,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Literal
 
-from agentcraft2_core.contracts import ValidationFailed, is_schema
+from agentcraft2_core.contracts import ValidationFailed, describe, is_schema
 
 __all__ = ["FEEDBACK_SCHEMA", "FeedbackRecord", "JsonlFeedbackLog", "load_feedback"]
 
@@ -72,11 +72,20 @@ def load_feedback(path: Path) -> list[FeedbackRecord]:
     """Read every feedback record in a JSONL file. Blank lines are skipped.
 
     Raises:
-        ValidationFailed: If a line is not JSON, carries another schema, or has
-            a verdict other than up or down. The message names the line.
+        ValidationFailed: If the file cannot be read, a line is not JSON, carries
+            another schema, or has a verdict other than up or down. The message
+            names the line, or says why the file could not be read.
     """
     records: list[FeedbackRecord] = []
-    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as problem:
+        raise ValidationFailed(
+            f"the feedback file {path} cannot be read",
+            expected="a UTF-8 JSONL file with one feedback object per line",
+            actual=describe(problem),
+        ) from problem
+    for number, line in enumerate(text.splitlines(), start=1):
         if not line.strip():
             continue
         where = f"{path.name}, line {number}"

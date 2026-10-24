@@ -28,14 +28,14 @@ class ModelStage(enum.IntEnum):
 
     AUDIT = 0
     DEADLINE = 5  # the whole call within the caller's deadline; a late answer is refused
-    BUDGET = 10  # execution pause check, reservation before and settlement after
+    BUDGET = 10  # call and token limits: calls count before, reported tokens after
     IDENTITY = 20
     POLICY = 30
     CONTEXT = 40  # reserved: no interceptor fills it yet
     INPUT_GUARDRAILS = 50
     STRUCTURED_OUTPUT = 60  # validates on the way back
     OUTPUT_GUARDRAILS = 70  # checks on the way back, before structured output
-    RESILIENCE = 80  # retries and fallback, closest to the provider
+    RESILIENCE = 80  # the time limit and retries, closest to the provider (no fallback)
 
 
 class ToolStage(enum.IntEnum):
@@ -43,7 +43,7 @@ class ToolStage(enum.IntEnum):
 
     AUDIT = 0
     DEADLINE = 5  # the whole call within the caller's deadline; a late result is refused
-    BUDGET = 10  # execution pause check and reservation
+    BUDGET = 10  # the call limit: calls count before they run
     REGISTRY = 20
     POLICY = 30
     APPROVAL = 40  # reserved: a human approval step, no interceptor yet

@@ -150,12 +150,24 @@ class ConfigResolver:
 
         model_provider = values.get(Key.MODEL_PROVIDER, defaults.model_provider)
         origins.setdefault(Key.MODEL_PROVIDER, profile_origin)
-        model = ModelSection(
-            provider=model_provider,
-            model_id=values.get(Key.MODEL_ID),
-            aliases=self._aliases(values, model_provider),
-            options=self._model_options(values),
-        )
+        try:
+            model = ModelSection(
+                provider=model_provider,
+                model_id=values.get(Key.MODEL_ID),
+                aliases=self._aliases(values, model_provider),
+                options=self._model_options(values),
+            )
+        except (TypeError, ValueError) as problem:
+            # An alias or provider name that is empty or padded fails here, not earlier.
+            raise ConfigurationError(
+                f"the model settings are not valid: {problem}",
+                expected="alias and provider names that are text without surrounding spaces",
+                actual=str(problem),
+                fix=(
+                    f"correct {self._name(Key.MODEL_ALIASES)}, {self._name(Key.MODEL_OPTIONS)} "
+                    f"or {self._name(Key.MODEL_PROVIDER)}"
+                ),
+            ) from problem
 
         sections: dict[Section, ProviderSelection] = {}
         for section in Section:

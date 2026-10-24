@@ -92,11 +92,14 @@ def _lookup(
     """
 
     def first(variable: str) -> tuple[str, str] | None:
+        # A blank value is not set, as everywhere else in the configuration: a compose file
+        # that passes an unset host variable through as "AC2_PHOENIX_ENABLED=" must not hide
+        # the value in the .env file behind it.
         return next(
             (
-                (value, f"{label}: {variable}")
+                (value.strip(), f"{label}: {variable}")
                 for label, layer in layers
-                if (value := layer.get(variable)) is not None
+                if (value := layer.get(variable)) is not None and value.strip()
             ),
             None,
         )

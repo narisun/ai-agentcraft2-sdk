@@ -26,7 +26,10 @@ async def run_eval(
     """Run ``task`` on every case, at most ``concurrency`` at a time, and score each output.
 
     A case whose task raises scores 0 on every metric and is reported by the
-    error's type; the run goes on with the other cases.
+    error's type; the run goes on with the other cases. A scorer that raises is a
+    fault in the evaluation, not a bad answer: the run stops at once, the cases
+    still running are cancelled, and the scorer's own error is raised with a note
+    that names the case.
 
     Args:
         task: Runs the agent, or the part being measured, for one case.
@@ -55,8 +58,20 @@ async def run_eval(
                 failed = tuple(Score(name, 0.0, "the task failed") for name in names)
                 return CaseResult(case, failed, type(error).__name__, seconds)
             seconds = time.perf_counter() - started
-            scores = tuple([await scorer(case, output) for scorer in scorers])
+            try:
+                scores = tuple([await scorer(case, output) for scorer in scorers])
+            except Exception as error:
+                error.add_note(f"raised by a scorer while scoring case {case.id!r}")
+                raise
             return CaseResult(case, scores, None, seconds)
 
-    results = await asyncio.gather(*(one(case) for case in cases))
+    running = [asyncio.ensure_future(one(case)) for case in cases]
+    try:
+        results = await asyncio.gather(*running)
+    except BaseException:
+        # Stop the other cases: left alone they would go on calling the model unobserved.
+        for pending in running:
+            pending.cancel()
+        await asyncio.gather(*running, return_exceptions=True)
+        raise
     return EvalReport(tuple(results), names, dict(metadata or {}))

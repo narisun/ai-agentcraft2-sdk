@@ -22,6 +22,7 @@ from agentcraft2_core.contracts import (
     Decision,
     IdGenerator,
     PolicyRequest,
+    describe,
 )
 
 __all__ = ["RulesPolicyDecisionPoint", "RulesPolicyOptions"]
@@ -63,8 +64,10 @@ class RulesPolicyDecisionPoint:
         try:
             content = path.read_bytes()
             text = content.decode("utf-8")
-        except (OSError, UnicodeDecodeError):
-            raise ConfigurationError(f"{what}: the file could not be read as text") from None
+        except (OSError, UnicodeDecodeError) as problem:
+            raise ConfigurationError(
+                f"{what}: the file could not be read as text ({describe(problem)})"
+            ) from None
         self._rules: tuple[Rule, ...] = parse_rules_document(
             parse_document_text(text, suffix=path.suffix, what=what), what=what
         )

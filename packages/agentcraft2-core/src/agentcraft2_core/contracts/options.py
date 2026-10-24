@@ -268,8 +268,9 @@ class CallLimits(OptionsModel):
 class BudgetLimits(OptionsModel):
     """How much one request may use before it is stopped. ``null`` for no limit.
 
-    A request is everything done for one ``request_id``. The budget is the loop
-    guard of a graph that keeps calling its model or its tools.
+    A request is everything done in one invocation of the graph: the budget is
+    counted per caller, application and invocation (see ``RequestContext.budget_key``).
+    It is the loop guard of a graph that keeps calling its model or its tools.
 
     Attributes:
         model_calls: The most model calls one request may make.
@@ -344,7 +345,8 @@ class ProviderSelection:
 
         Raises:
             ConfigurationError: If an option is unknown, missing or invalid. The
-                message names the fields and never repeats their values.
+                message names the fields. A value is shown only when it is short and
+                plain, and never a credential: those are masked.
         """
         try:
             parsed = model.model_validate(_thaw(self.options))

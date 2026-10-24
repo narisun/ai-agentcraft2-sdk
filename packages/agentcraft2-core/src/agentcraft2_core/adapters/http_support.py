@@ -8,7 +8,7 @@ from typing import Any
 
 import httpx
 
-from agentcraft2_core.contracts import ConfigurationError
+from agentcraft2_core.contracts import ConfigurationError, describe
 
 __all__ = ["checked_base_url", "proxied_client_options", "tls_verification"]
 
@@ -90,5 +90,7 @@ def tls_verification(what: str, ca_file: Path | None) -> ssl.SSLContext | bool:
         return True
     try:
         return ssl.create_default_context(cafile=str(ca_file))
-    except (OSError, ssl.SSLError):
-        raise ConfigurationError(f"{what}: ca_file could not be read as a CA file") from None
+    except (OSError, ssl.SSLError) as problem:
+        raise ConfigurationError(
+            f"{what}: ca_file {ca_file} could not be read as a CA file ({describe(problem)})"
+        ) from None

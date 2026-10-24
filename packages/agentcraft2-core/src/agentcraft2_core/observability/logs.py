@@ -137,6 +137,11 @@ def configure_logging(
     Returns:
         The handler that was installed.
     """
+    # Checked before anything is changed, so a bad level leaves logging as it was. Names are
+    # accepted in any case: logging itself knows only the upper-case ones.
+    chosen = logging.getLevelName(level.upper()) if isinstance(level, str) else level
+    if not isinstance(chosen, int):
+        raise ValueError(f"{level!r} is not a log level")
     handler = logging.StreamHandler(stream if stream is not None else sys.stdout)
     handler.setFormatter(JsonLogFormatter(service, details=details))
     setattr(handler, _HANDLER_MARK, True)
@@ -145,9 +150,6 @@ def configure_logging(
         if getattr(existing, _HANDLER_MARK, False):
             root.removeHandler(existing)
     root.addHandler(handler)
-    chosen = logging.getLevelName(level) if isinstance(level, str) else level
-    if not isinstance(chosen, int):
-        raise ValueError(f"{level!r} is not a log level")
     root.setLevel(max(chosen, logging.WARNING))
     for name in LIBRARY_LOGGERS:
         logger = logging.getLogger(name)

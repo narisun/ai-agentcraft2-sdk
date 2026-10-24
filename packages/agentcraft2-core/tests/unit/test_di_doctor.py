@@ -91,6 +91,17 @@ async def test_an_adapter_that_cannot_be_built_is_the_one_result() -> None:
     assert result.fix
 
 
+async def test_a_container_that_cannot_even_be_built_is_the_one_result_too() -> None:
+    # The audit option "tracing" is validated while the container is built, before start.
+    config = ServiceConfig.for_testing(
+        sections={Section.AUDIT: ProviderSelection(provider="fake", options={"tracing": "yes"})}
+    )
+    (result,) = await diagnose(config, Fakes().providers())
+    assert (result.name, result.ok) == ("startup", False)
+    assert "tracing" in result.detail
+    assert result.fix
+
+
 async def test_the_model_is_checked_without_calling_it_and_skipped_when_there_is_none() -> None:
     model = FakeChatModelProvider(["never used"])
     fakes = Fakes(model=model)

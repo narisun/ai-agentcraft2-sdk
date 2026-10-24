@@ -13,7 +13,7 @@ from typing import Any
 
 import yaml
 
-__all__ = ["StrictYamlError", "load_strict_yaml"]
+__all__ = ["StrictYamlError", "load_strict_yaml", "yaml_problem"]
 
 
 class StrictYamlError(ValueError):
@@ -50,5 +50,19 @@ def load_strict_yaml(text: str) -> object:
     """
     try:
         return yaml.load(text, Loader=_StrictLoader)  # noqa: S506 - a SafeLoader subclass
-    except yaml.YAMLError:
-        raise StrictYamlError("the text is not valid YAML") from None
+    except yaml.YAMLError as problem:
+        raise StrictYamlError(f"the text is not valid YAML: {yaml_problem(problem)}") from None
+
+
+def yaml_problem(problem: yaml.YAMLError) -> str:
+    """Say what is wrong and where, without the snippet of text that PyYAML would quote.
+
+    The line and column are the useful part. The quoted source line can hold a value
+    that does not belong in an error message.
+    """
+    if not isinstance(problem, yaml.MarkedYAMLError):
+        return "the text could not be parsed"
+    said = problem.problem or problem.context or "the text could not be parsed"
+    mark = problem.problem_mark or problem.context_mark
+    where = f" (line {mark.line + 1}, column {mark.column + 1})" if mark is not None else ""
+    return f"{said}{where}"

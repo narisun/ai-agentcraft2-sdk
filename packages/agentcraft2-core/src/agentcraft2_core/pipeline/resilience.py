@@ -18,6 +18,7 @@ from agentcraft2_core.contracts import (
     PolicyDenied,
     RequestContext,
     TransientError,
+    describe,
 )
 from agentcraft2_core.pipeline.calls import Evidence
 from agentcraft2_core.pipeline.interceptor import Handler
@@ -113,10 +114,23 @@ class ResilienceInterceptor(Generic[CallT, ResponseT]):
             return await call_next(request)
         if seconds <= 0:
             raise self._deadline_passed(request)
+        limit_timer = asyncio.timeout(seconds)
         try:
-            async with asyncio.timeout(seconds):
+            async with limit_timer:
                 response = await call_next(request)
-        except TimeoutError:
+        except TimeoutError as timed_out:
+            if not limit_timer.expired():
+                # Not this stage's clock: the call raised TimeoutError itself, for example
+                # from its own wait_for. Say that, rather than blaming the stage's limit or
+                # the request's deadline for a time that has not run out.
+                raise TransientError(
+                    f"the {self._what} {request.span_name.split(' ', 1)[-1]!r} timed out "
+                    "on something it waited for",
+                    expected=f"an answer within {seconds:g} seconds",
+                    actual="a TimeoutError raised by the call itself",
+                    fix="raise the timeout of what the call waits on, or find what is slow",
+                    detail=describe(timed_out),
+                ) from timed_out
             if by_deadline:
                 raise self._deadline_passed(request) from None
             raise TransientError(

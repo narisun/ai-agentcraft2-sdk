@@ -32,6 +32,7 @@ from agentcraft2_core.integrations.langgraph.context import current_diagnostic_l
 from agentcraft2_core.integrations.langgraph.history import request_history
 from agentcraft2_core.integrations.langgraph.model_trace import diagnostic_content
 from agentcraft2_core.integrations.langgraph.tools import current_native_tool_wrapper
+from agentcraft2_core.observability.errors import raised_at
 from agentcraft2_core.observability.model_trace import JsonlModelTraceSink
 from agentcraft2_core.observability.trace_links import publish_trace
 from agentcraft2_core.observability.usage import normalize_usage
@@ -274,7 +275,11 @@ class AgentTracing:
         except Exception as error:  # noqa: BLE001 - diagnostics must not discard an accepted answer
             _LOG.warning(
                 "agent_tracing.model_record_failed",
-                extra={"error_type": type(error).__name__, "request_id": record.get("request_id")},
+                extra={
+                    "error_type": type(error).__name__,
+                    "error_at": raised_at(error),
+                    "request_id": record.get("request_id"),
+                },
             )
         if self.local_sink is not None:
             try:
@@ -284,6 +289,7 @@ class AgentTracing:
                     "agent_tracing.local_record_failed",
                     extra={
                         "error_type": type(error).__name__,
+                        "error_at": raised_at(error),
                         "request_id": record.get("request_id"),
                     },
                 )
@@ -519,9 +525,20 @@ class AgentTracing:
             self.schema.metadata(root, "checkpoints", json.dumps(references[:64]))
             self.schema.metadata(root, "checkpoints_truncated", len(references) > 64)
         except TimeoutError:
+            _LOG.warning(
+                "agent_tracing.checkpoints_timed_out", extra={"request_id": context.request_id}
+            )
             self.schema.metadata(root, "checkpoints_unavailable", True)
             self.schema.metadata(root, "checkpoints_timed_out", True)
-        except Exception:  # noqa: BLE001 - checkpoint diagnostics are best effort
+        except Exception as error:  # noqa: BLE001 - checkpoint diagnostics are best effort
+            _LOG.warning(
+                "agent_tracing.checkpoints_unavailable",
+                extra={
+                    "error_type": type(error).__name__,
+                    "error_at": raised_at(error),
+                    "request_id": context.request_id,
+                },
+            )
             self.schema.metadata(root, "checkpoints_unavailable", True)
 
     def close(self) -> None:

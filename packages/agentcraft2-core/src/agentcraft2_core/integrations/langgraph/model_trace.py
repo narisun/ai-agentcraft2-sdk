@@ -11,6 +11,7 @@ from pydantic import SecretBytes, SecretStr
 
 from agentcraft2_core.contracts import Clock, IdGenerator, ModelTraceSink
 from agentcraft2_core.contracts.redaction import REDACTED, redact
+from agentcraft2_core.observability.errors import raised_at
 from agentcraft2_core.pipeline import ModelCall
 
 _LOG = logging.getLogger(__name__)
@@ -122,5 +123,9 @@ class ModelTrace:
             self._failed = True
             _LOG.warning(
                 "model_trace.disabled",
-                extra={"error_type": type(error).__name__, "request_id": context.request_id},
+                extra={
+                    "error_type": type(error).__name__,
+                    "error_at": raised_at(error),
+                    "request_id": context.request_id,
+                },
             )

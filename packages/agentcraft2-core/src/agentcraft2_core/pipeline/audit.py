@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import Callable, Mapping
 from typing import Generic, Protocol, TypeVar
 
@@ -24,6 +25,7 @@ from agentcraft2_core.pipeline.interceptor import Handler
 
 __all__ = ["AuditInterceptor", "AuditableCall", "record_refused_sign_in"]
 
+_LOG = logging.getLogger(__name__)
 _UNKNOWN = "unknown"
 _REFUSALS = (PolicyDenied, BudgetExceeded, ExecutionPaused)
 
@@ -135,7 +137,14 @@ class AuditInterceptor(Generic[CallT, ResponseT]):
                 note(_ended(AuditOutcome.FAILED, {}), error)
                 await self._record(request, started, AuditOutcome.FAILED, error, {})
                 raise
-            extra = self._describe_response(response) if self._describe_response else {}
+            try:
+                extra = self._describe_response(response) if self._describe_response else {}
+            except Exception as error:
+                # The call took effect, but its record cannot be completed. Say so in the
+                # record and in the reply: a call must not pass without an accurate record.
+                note(_ended(AuditOutcome.FAILED, {}), error)
+                await self._record(request, started, AuditOutcome.FAILED, error, {})
+                raise
             note(_ended(AuditOutcome.SUCCESS, extra))
             await self._record(request, started, AuditOutcome.SUCCESS, None, extra)
             return response
@@ -182,6 +191,12 @@ class AuditInterceptor(Generic[CallT, ResponseT]):
             await self._sink.write(record)
         except Exception as audit_error:
             if best_effort:
+                # The call was cancelled, so the cancellation must go on. The lost record is
+                # not silent: the log says that it was lost and why.
+                _LOG.warning(
+                    "audit.record_lost_during_cancellation",
+                    extra={"event": request.event, "error_type": type(audit_error).__name__},
+                )
                 return
             failure = IntegrityError(f"the audit record for {request.event} could not be written")
             if error is not None:
