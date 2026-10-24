@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 import pytest
@@ -128,15 +128,11 @@ def test_eval_accept_promotes_the_report_to_the_baseline(
     assert (
         main(["new", "agent", "helper", "--workspace", str(workspace)], toolbox=toolbox(tools)) == 0
     )
-    report = workspace / "agents" / "helper" / ".agentcraft2" / "eval-report.json"
-    report.parent.mkdir(parents=True, exist_ok=True)
-    report.write_text(
-        '{"schema": "agentcraft2.eval-report/v1", "means": {"m": 1.0}, '
-        '"results": [], "metadata": {}}',
-        encoding="utf-8",
-    )
     assert (
-        main(["eval", "helper", "--accept", "--workspace", str(workspace)], toolbox=toolbox(tools))
+        main(
+            ["eval", "helper", "--accept", "--workspace", str(workspace)],
+            toolbox=toolbox_for_tests(pins=PINS, run_tool=_run_that_writes_a_report(workspace)),
+        )
         == 0
     )
     baseline = workspace / "agents" / "helper" / "evals" / "baseline.json"
@@ -166,14 +162,72 @@ def test_eval_accept_without_a_report_names_the_fix(
     assert "eval-report.json" in capsys.readouterr().err
 
 
-def _write_eval_report(workspace: Path) -> None:
-    report = workspace / "agents" / "helper" / ".agentcraft2" / "eval-report.json"
-    report.parent.mkdir(parents=True, exist_ok=True)
-    report.write_text(
-        '{"schema": "agentcraft2.eval-report/v1", "means": {"m": 1.0}, '
-        '"results": [], "metadata": {}}',
-        encoding="utf-8",
+def test_eval_accept_does_not_save_a_report_an_earlier_run_left(
+    workspace: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    tools = Tools()
+    assert (
+        main(["new", "agent", "helper", "--workspace", str(workspace)], toolbox=toolbox(tools)) == 0
     )
+    # An earlier real-model run left a report. This run skips its eval (fake provider)
+    # and exits 0 without writing one, so the old report must not become the baseline.
+    _report_path(workspace).parent.mkdir(parents=True, exist_ok=True)
+    _report_path(workspace).write_text(REPORT, encoding="utf-8")
+    assert (
+        main(["eval", "helper", "--accept", "--workspace", str(workspace)], toolbox=toolbox(tools))
+        == 1
+    )
+    err = capsys.readouterr().err
+    assert "this run wrote no report" in err
+    assert "fake model provider" in err
+    assert not (workspace / "agents" / "helper" / "evals" / "baseline.json").exists()
+
+
+def test_eval_of_every_service_clears_the_markers_a_killed_accept_run_left(
+    workspace: Path,
+) -> None:
+    tools = Tools()
+    assert (
+        main(["new", "agent", "helper", "--workspace", str(workspace)], toolbox=toolbox(tools)) == 0
+    )
+    marker = _accept_marker(workspace)
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.touch()
+    seen: dict[str, bool] = {}
+
+    def run_tool(module: str, arguments: Sequence[str], folder: Path) -> int:
+        seen["marker_during_run"] = marker.exists()
+        return 0
+
+    assert (
+        main(
+            ["eval", "--workspace", str(workspace)],
+            toolbox=toolbox_for_tests(pins=PINS, run_tool=run_tool),
+        )
+        == 0
+    )
+    assert seen["marker_during_run"] is False
+    assert not marker.exists()
+
+
+REPORT = (
+    '{"schema": "agentcraft2.eval-report/v1", "means": {"m": 1.0}, "results": [], "metadata": {}}'
+)
+
+
+def _report_path(workspace: Path) -> Path:
+    return workspace / "agents" / "helper" / ".agentcraft2" / "eval-report.json"
+
+
+def _run_that_writes_a_report(workspace: Path) -> Callable[[str, Sequence[str], Path], int]:
+    """A pytest run whose eval ran against a real model and wrote its report."""
+
+    def run_tool(module: str, arguments: Sequence[str], folder: Path) -> int:
+        _report_path(workspace).parent.mkdir(parents=True, exist_ok=True)
+        _report_path(workspace).write_text(REPORT, encoding="utf-8")
+        return 0
+
+    return run_tool
 
 
 def _accept_marker(workspace: Path) -> Path:
@@ -187,13 +241,13 @@ def test_eval_accept_leaves_a_marker_during_the_pytest_run_and_removes_it(
     assert (
         main(["new", "agent", "helper", "--workspace", str(workspace)], toolbox=toolbox(tools)) == 0
     )
-    _write_eval_report(workspace)
     marker = _accept_marker(workspace)
     captured: dict[str, bool] = {}
+    write_report = _run_that_writes_a_report(workspace)
 
     def run_tool(module: str, arguments: Sequence[str], folder: Path) -> int:
         captured["during"] = marker.exists()
-        return 0
+        return write_report(module, arguments, folder)
 
     assert not marker.exists()
     assert (

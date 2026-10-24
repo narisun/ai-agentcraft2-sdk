@@ -407,14 +407,26 @@ class RestDataSource:
                 ),
             )
         endpoints = {}
-        for path in sorted(directory.glob("*.yaml")):
+        defined_in: dict[str, Path] = {}
+        # .yml as well as .yaml: registries and rules accept both, and a file of the other
+        # spelling would otherwise be skipped without a word.
+        for path in sorted([*directory.glob("*.yaml"), *directory.glob("*.yml")]):
             try:
                 endpoint = _load_endpoint(path)
             except ConfigurationError as exc:
                 # Keep the facts and the file note; add which source was loading it.
                 exc.add_note(f"while starting data source {self._name!r}")
                 raise
-            endpoints[endpoint.description.name] = endpoint
+            name = endpoint.description.name
+            if name in defined_in:
+                raise ConfigurationError(
+                    f"data source {self._name!r}: query {name!r} is defined twice",
+                    expected="one file for each query name",
+                    actual=f"{defined_in[name].name} and {path.name}",
+                    fix="rename one query, or delete the file that is left over",
+                )
+            defined_in[name] = path
+            endpoints[name] = endpoint
         self._client = httpx.AsyncClient(
             verify=tls_verification(f"data source {self._name!r}", self._options.ca_file),
             timeout=self._options.timeout_seconds,

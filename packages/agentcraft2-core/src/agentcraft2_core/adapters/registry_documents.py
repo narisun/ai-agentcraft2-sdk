@@ -187,8 +187,13 @@ def parse_document_text(text: str, *, suffix: str, what: str) -> object:
     if kind == ".json":
         try:
             return json.loads(text)
-        except ValueError:
-            raise ConfigurationError(f"{what}: the file is not valid JSON") from None
+        except json.JSONDecodeError as problem:
+            raise ConfigurationError(
+                f"{what}: the file is not valid JSON "
+                f"({problem.msg}, line {problem.lineno}, column {problem.colno})"
+            ) from None
+        except ValueError as problem:
+            raise ConfigurationError(f"{what}: the file is not valid JSON ({problem})") from None
     if kind in {".yaml", ".yml"}:
         try:
             return load_strict_yaml(text)
@@ -360,8 +365,10 @@ class RegistryDocument:
 def _parsed(document: RegistryDocument) -> tuple[object, str]:
     try:
         text = document.content.decode("utf-8")
-    except UnicodeDecodeError:
-        raise ConfigurationError(f"{document.what}: the file could not be read as text") from None
+    except UnicodeDecodeError as problem:
+        raise ConfigurationError(
+            f"{document.what}: the file could not be read as text ({problem})"
+        ) from None
     parsed = parse_document_text(text, suffix=document.suffix, what=document.what)
     return parsed, document.revision or content_revision(document.content)
 

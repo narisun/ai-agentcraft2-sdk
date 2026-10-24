@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 from typing import Any, Literal
@@ -152,6 +153,30 @@ async def test_a_function_can_score() -> None:
     case = EvalCase(id="1", input={})
     assert (await short(case, "brief")).value == 1.0
     assert (await short(case, "far too long an answer")).value == 0.0
+
+
+async def test_a_scorer_that_raises_stops_the_run_names_the_case_and_cancels_the_rest() -> None:
+    started: list[str] = []
+    cancelled: list[str] = []
+
+    async def task(case: EvalCase) -> str:
+        started.append(case.id)
+        if case.id == "slow":
+            try:
+                await asyncio.sleep(30)
+            except asyncio.CancelledError:
+                cancelled.append(case.id)
+                raise
+        return "answer"
+
+    def broken(case: EvalCase, output: str) -> bool:
+        raise KeyError("expected")  # a bug in the scorer, not a bad answer
+
+    cases = [EvalCase(id="bad", input={}), EvalCase(id="slow", input={})]
+    with pytest.raises(KeyError, match="expected") as raised:
+        await run_eval(task, cases, [scored_by("broken", broken)], concurrency=2)
+    assert any("case 'bad'" in note for note in raised.value.__notes__)
+    assert cancelled == ["slow"]  # not left running after the run ended
 
 
 def test_an_eval_config_keeps_the_real_model_and_reads_the_environment(

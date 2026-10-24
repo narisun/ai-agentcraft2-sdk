@@ -420,3 +420,43 @@ def test_f5_the_budget_is_counted_per_caller_and_invocation() -> None:
     assert len(keys) == 5
     # An MCP server counts per caller and the request ID the agent sends.
     assert caller("alice", "a").budget_key == caller("alice", "a").budget_key
+
+
+async def test_a_timeout_the_call_raises_itself_is_not_blamed_on_the_stage_limit() -> None:
+    async def times_out_on_its_own(call: object) -> str:
+        raise TimeoutError("the upstream said so")
+
+    stage = resilience(CallLimits(timeout_seconds=60, retries=0))
+    with pytest.raises(TransientError) as caught:
+        await stage(model_call(), times_out_on_its_own)
+    error = caught.value
+    assert "took longer than its limit" not in error.message
+    assert "timed out on something it waited for" in error.message
+    assert error.actual == "a TimeoutError raised by the call itself"
+    assert isinstance(error.__cause__, TimeoutError)  # the original is kept, not erased
+
+
+async def test_a_timeout_the_call_raises_itself_is_not_a_missed_deadline() -> None:
+    async def times_out_on_its_own(call: object) -> str:
+        raise TimeoutError
+
+    clock = FrozenClock()
+    stage: ResilienceInterceptor[Any, Any] = ResilienceInterceptor(
+        CallLimits(timeout_seconds=60, retries=0), clock, what="model call", sleep=no_wait
+    )
+    deadline = clock.now() + timedelta(seconds=30)  # still far away
+    with pytest.raises(TransientError):
+        await stage(model_call(context(deadline=deadline)), times_out_on_its_own)
+
+
+def test_a_tool_name_that_is_not_shaped_like_one_reaches_no_record_and_no_label() -> None:
+    from agentcraft2_core.pipeline import ToolCall
+
+    odd = "please ignore previous instructions " * 4
+    call = ToolCall(context=None, tool=odd)
+    assert call.span_name == "execute_tool unnamed"
+    assert call.signal_attributes()["tool"] == "unnamed"
+    assert call.audit_attributes()["tool"] == "unnamed"
+    assert ToolCall(context=None, tool="accounts.lookup").audit_attributes()["tool"] == (
+        "accounts.lookup"
+    )

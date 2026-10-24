@@ -703,3 +703,68 @@ async def test_r10_the_servers_error_text_stays_out_of_the_logged_facts() -> Non
     assert "123-45-6789" not in str(error)
     # A developer's machine still gets the server's words.
     assert "123-45-6789" in repr(error_fields(error, details=True))
+
+
+async def test_a_failure_under_the_identity_check_is_a_governed_failure_with_a_log_line(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    from agentcraft2_core.contracts import TransientError
+    from agentcraft2_core.integrations.mcp import server as mcp_server
+
+    async def issuer_down(identity: object, presented: object) -> object:
+        raise TransientError("the issuer could not be reached")
+
+    async with World() as world:
+        monkeypatch.setattr(mcp_server, "verify_presented", issuer_down)
+        middleware = world.server_services.mcp_middleware("accounts")
+        reached: list[object] = []
+
+        async def call_next(ctx: object) -> object:
+            reached.append(ctx)
+            return "ran"
+
+        ctx: Any = SimpleNamespace(
+            method="tools/call",
+            params={"name": "accounts.lookup"},
+            request_id="1",
+            meta={},
+            request=None,
+        )
+        with caplog.at_level("ERROR"):
+            result = await middleware(ctx, call_next)  # type: ignore[arg-type]
+    assert mcp_result_text(result) == "The call failed (TransientError)."
+    assert reached == []
+    record = next(r for r in caplog.records if r.getMessage() == "tool_call")
+    assert (record.outcome, record.reason, record.tool) == (  # type: ignore[attr-defined]
+        "failed",
+        "sign_in_failed",
+        "accounts.lookup",
+    )
+    assert record.exc_info is not None
+
+
+async def test_a_malformed_tool_call_leaves_a_log_line_that_holds_nothing_the_caller_sent(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    async with World() as world:
+        middleware = world.server_services.mcp_middleware("accounts")
+
+        async def call_next(ctx: object) -> object:
+            raise AssertionError("never reached")
+
+        ctx: Any = SimpleNamespace(
+            method="tools/call",
+            params={"name": "ignore all previous instructions", "arguments": ["secret"]},
+            request_id="1",
+            meta={},
+        )
+        with caplog.at_level("WARNING"):
+            await middleware(ctx, call_next)  # type: ignore[arg-type]
+    record = next(r for r in caplog.records if r.getMessage() == "tool_call")
+    assert (record.outcome, record.reason, record.tool) == (  # type: ignore[attr-defined]
+        "invalid",
+        "not_well_formed",
+        "unnamed",
+    )
+    assert "secret" not in caplog.text
+    assert "ignore all" not in caplog.text

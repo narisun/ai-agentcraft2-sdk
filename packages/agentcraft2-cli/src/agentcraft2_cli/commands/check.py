@@ -95,9 +95,16 @@ def evals(tools: Toolbox, service: str | None, accept: bool, workspace: Path | N
     arguments = ("-m", "eval", "-q", "-rs", target.relative_to(root).as_posix() if service else ".")
     click.echo(f"== evals: python -m pytest {' '.join(arguments)}")
     accept_marker = target / ".agentcraft2" / "eval-accept.flag"
-    # A marker left by a killed --accept run must not skip later regression gates.
-    accept_marker.unlink(missing_ok=True)
+    # A marker left by a killed --accept run must not skip later regression gates. Each
+    # generated test looks for the marker in its own service folder, so with no SERVICE
+    # every service folder is cleared, not the workspace root.
+    for stale in [accept_marker] if service else _service_markers(root):
+        stale.unlink(missing_ok=True)
+    report = target / ".agentcraft2" / "eval-report.json"
     if accept:
+        # An eval that skips itself writes no report. A report left by an earlier run
+        # must not be mistaken for this run's and saved as the baseline.
+        report.unlink(missing_ok=True)
         accept_marker.parent.mkdir(parents=True, exist_ok=True)
         accept_marker.touch()
     try:
@@ -114,11 +121,14 @@ def evals(tools: Toolbox, service: str | None, accept: bool, workspace: Path | N
     if code != 0:
         raise CliError("the evals did not meet their bar", fix="read the report above")
     if accept:
-        report = target / ".agentcraft2" / "eval-report.json"
         if not report.is_file():
             raise CliError(
-                f"there is no report at {report.relative_to(root).as_posix()}",
-                fix="run the evals once without --accept, or check the service's eval test",
+                f"this run wrote no report at {report.relative_to(root).as_posix()}",
+                expected="an eval that ran against a real model and wrote its report",
+                actual="no report; an eval skips itself while the service's .env names the "
+                "fake model provider",
+                fix="set a real model provider and model ID in the service's .env, "
+                "then run 'agentcraft2 eval SERVICE --accept' again",
             )
         baseline = target / "evals" / "baseline.json"
         baseline.parent.mkdir(parents=True, exist_ok=True)
@@ -127,3 +137,8 @@ def evals(tools: Toolbox, service: str | None, accept: bool, workspace: Path | N
 
 
 _NO_TESTS = 5
+
+
+def _service_markers(root: Path) -> list[Path]:
+    """Every accept marker a killed ``--accept`` run could have left in a service folder."""
+    return sorted(root.glob("*/*/.agentcraft2/eval-accept.flag"))

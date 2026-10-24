@@ -12,7 +12,10 @@ from agentcraft2_ui.config.settings import Settings
 def private_secret(path: Path) -> str:
     """Keep generated local secrets stable across restarts without overwriting them."""
     try:
-        with path.open("x", encoding="utf-8") as target:
+        # Created for its owner alone: on a shared machine another user must not read the
+        # access code, or forge the session, by opening a file the umask left readable.
+        descriptor = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as target:
             target.write(secrets.token_urlsafe(48))
     except FileExistsError:
         pass
@@ -28,7 +31,7 @@ def prepare_shell(state: Path, settings: Settings) -> tuple[str, str]:
     """Prepare writable framework assets before importing Chainlit."""
     if os.environ.get("LITERAL_API_KEY"):
         raise ValueError("unset LITERAL_API_KEY in this local UI environment")
-    state.mkdir(parents=True, exist_ok=True)
+    state.mkdir(mode=0o700, parents=True, exist_ok=True)
     secret = private_secret(state / "session-secret")
     code = private_secret(state / "access-code")
     shell = state / "shell"

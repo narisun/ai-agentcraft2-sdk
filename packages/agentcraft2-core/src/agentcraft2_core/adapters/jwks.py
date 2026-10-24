@@ -30,6 +30,13 @@ _LOG = logging.getLogger(__name__)
 _MIN_REFRESH_SECONDS = 60.0
 
 
+def _unavailable() -> PolicyDenied:
+    return PolicyDenied(
+        "the caller's token cannot be checked: the issuer's signing keys are not available",
+        reason_code="identity_unavailable",
+    )
+
+
 class SigningKeys:
     """The issuer's published keys, read when needed and kept for a while.
 
@@ -49,7 +56,11 @@ class SigningKeys:
         self._keep_seconds = keep_seconds
         self._keys: dict[str, PyJWK] = {}
         self._read_at: float | None = None
-        # Guards _keys, _read_at and _reading; it is never held across the network.
+        # When a read last ended, whether it worked or not. A failing issuer is asked no
+        # more often than a working one: each failed read would otherwise make the next
+        # verification wait for it again.
+        self._attempted_at: float | None = None
+        # Guards _keys, _read_at, _attempted_at and _reading; it is never held across the network.
         self._lock = asyncio.Lock()
         self._reading: asyncio.Task[None] | None = None
 
@@ -59,7 +70,11 @@ class SigningKeys:
         Raises:
             ConfigurationError: If they cannot be read or none of them is usable.
         """
-        keys = await self._read()
+        try:
+            keys = await self._read()
+        finally:
+            async with self._lock:
+                self._attempted_at = self._clock.monotonic()
         async with self._lock:
             self._keys = keys
             self._read_at = self._clock.monotonic()
@@ -76,6 +91,8 @@ class SigningKeys:
         """
         async with self._lock:
             if not self._needs_read(kid):
+                if not self._keys:
+                    raise _unavailable()  # a read just failed, and no keys are held
                 return self._keys.get(kid)
             reading = self._reading
             if reading is None:
@@ -84,20 +101,18 @@ class SigningKeys:
         await asyncio.shield(reading)
         async with self._lock:
             if not self._keys:
-                raise PolicyDenied(
-                    "the caller's token cannot be checked: the issuer's signing keys "
-                    "are not available",
-                    reason_code="identity_unavailable",
-                )
+                raise _unavailable()
             # Keys rotate rarely: the ones already held stay in use until a read works.
             return self._keys.get(kid)
 
     def _needs_read(self, kid: str) -> bool:
         """Decide, with the lock held, whether the keys are stale or ``kid`` is worth a read."""
-        age = None if self._read_at is None else self._clock.monotonic() - self._read_at
+        now = self._clock.monotonic()
+        if self._attempted_at is not None and now - self._attempted_at < _MIN_REFRESH_SECONDS:
+            return False  # asked a moment ago: a failed read is not retried at once either
+        age = None if self._read_at is None else now - self._read_at
         stale = age is None or age >= self._keep_seconds
-        may_retry = age is None or age >= _MIN_REFRESH_SECONDS
-        return stale or (kid not in self._keys and may_retry)
+        return stale or kid not in self._keys
 
     async def _read_and_keep(self) -> None:
         """Read the keys and replace the held ones; a failure keeps what is held."""

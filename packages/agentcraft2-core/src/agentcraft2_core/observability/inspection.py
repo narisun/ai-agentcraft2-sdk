@@ -2,11 +2,15 @@
 
 import asyncio
 import json
+import logging
 from collections.abc import Awaitable, Callable, Iterator
 from pathlib import Path
 
 from agentcraft2_core.contracts import RequestContext, is_schema
 from agentcraft2_core.contracts.inspection import InspectionSection, TurnInspection
+from agentcraft2_core.observability.errors import raised_at
+
+_LOG = logging.getLogger(__name__)
 
 CheckpointPreview = Callable[[RequestContext, str], Awaitable[InspectionSection]]
 AuthorizeInspection = Callable[[RequestContext], Awaitable[None]]
@@ -48,7 +52,14 @@ def _file_records(path: Path) -> Iterator[dict[str, object] | None]:
                     continue
                 if isinstance(record, dict):
                     yield record
-    except OSError:
+    except OSError as error:
+        # A file that is not there yet is ordinary. Anything else (permissions, a
+        # directory, a failing disk) would otherwise look like a short scan.
+        if not isinstance(error, FileNotFoundError):
+            _LOG.warning(
+                "turn_inspection.file_unreadable",
+                extra={"error_type": type(error).__name__, "error_at": raised_at(error)},
+            )
         yield None
 
 
@@ -133,7 +144,12 @@ class LocalTurnInspector:
         if self.checkpoints is not None:
             try:
                 checkpoints = await self.checkpoints(context, request_id)
-            except Exception:  # noqa: BLE001 - diagnostic failure has no user-content error text
+            except Exception as error:  # noqa: BLE001 - diagnostic failure has no user-content text
+                # The reply says only "unavailable"; the log says what failed and where.
+                _LOG.warning(
+                    "turn_inspection.checkpoints_unavailable",
+                    extra={"error_type": type(error).__name__, "error_at": raised_at(error)},
+                )
                 checkpoints = InspectionSection(availability="unavailable")
         return TurnInspection(
             scope=context.scope,

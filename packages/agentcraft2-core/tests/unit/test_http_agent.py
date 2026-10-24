@@ -80,12 +80,15 @@ class Agent:
 
     def __init__(self) -> None:
         self.fail_with: BaseException | None = None
+        self.returns: Any = None
         self.seen: list[tuple[str, str, Any]] = []
 
     async def __call__(self, context: RequestContext, given: Any) -> Any:
         self.seen.append((context.principal.subject, context.thread_id, given))
         if self.fail_with is not None:
             raise self.fail_with
+        if self.returns is not None:
+            return self.returns
         return {"answer": f"hello {context.principal.subject}", "asked": given}
 
 
@@ -178,9 +181,10 @@ async def test_a_refused_token_is_401_and_the_agent_does_not_run(
     assert service.agent.seen == []
 
 
-async def test_the_token_scheme_is_matched_whatever_its_case(service: Service) -> None:
+@pytest.mark.parametrize("scheme", ["bearer", "BEARER", "BeArEr"])
+async def test_the_token_scheme_is_matched_whatever_its_case(service: Service, scheme: str) -> None:
     reply = await service.client.post(
-        "/invoke", json={"input": "hi"}, headers={"authorization": "bearer bo-token"}
+        "/invoke", json={"input": "hi"}, headers={"authorization": f"{scheme} bo-token"}
     )
     assert reply.json()["output"]["answer"] == "hello bo"
 
@@ -217,6 +221,26 @@ async def test_an_unexpected_error_is_a_plain_500(service: Service) -> None:
     reply = await service.invoke()
     assert reply.status_code == 500
     assert "a-secret-name" not in reply.text
+
+
+@pytest.mark.parametrize("answer", [float("nan"), object()])
+async def test_an_answer_json_cannot_hold_is_an_internal_error_with_the_request_id(
+    service: Service, caplog: pytest.LogCaptureFixture, answer: object
+) -> None:
+    # The agent has already run when its answer fails to serialise. Without a handler the
+    # framework replies with its own plain-text 500: no request ID, and no line in the log.
+    service.agent.returns = {"answer": answer}
+    with caplog.at_level("ERROR"):
+        reply = await service.invoke(**{"x-request-id": "r-7"})
+    assert reply.status_code == 500
+    assert reply.headers["content-type"].startswith("application/json")
+    assert reply.json() == {"error": "internal", "request_id": "r-7"}
+    assert reply.headers["x-request-id"] == "r-7"
+    assert any(
+        "could not be completed after the run" in record.getMessage()
+        and getattr(record, "request_id", None) == "r-7"
+        for record in caplog.records
+    )
 
 
 async def test_a_sign_in_that_cannot_be_recorded_fails_the_request(service: Service) -> None:
@@ -441,12 +465,15 @@ async def _json(response: Response) -> dict[str, Any]:
 
 
 class _Prelude:
-    def __init__(self, *, accepting: bool = True) -> None:
+    def __init__(self, *, accepting: bool = True, max_body_bytes: int = 64) -> None:
         self.services = Services()
         self.lifecycle = ServiceLifecycle(_no_check)
         self.accepting = accepting
         self.prelude = RequestPrelude(
-            self.services, application=APPLICATION, lifecycle=self.lifecycle, max_body_bytes=64
+            self.services,
+            application=APPLICATION,
+            lifecycle=self.lifecycle,
+            max_body_bytes=max_body_bytes,
         )
 
     async def start(self) -> _Prelude:
@@ -486,6 +513,15 @@ async def test_the_prelude_refuses_a_bad_body_before_anyone_is_asked(
     refused = await kit.prelude.admit(_request(body, headers={"authorization": "Bearer ann-token"}))
     assert isinstance(refused, Response)
     assert refused.status_code == status
+    assert kit.services.asked == []
+
+
+async def test_a_body_nested_deeper_than_the_parser_follows_is_a_bad_request_not_a_crash() -> None:
+    # Anyone can send this before signing in; the JSON parser gives up with RecursionError.
+    kit = await _Prelude(max_body_bytes=10_000).start()
+    refused = await kit.prelude.admit(_request(b"[" * 5000))
+    assert isinstance(refused, Response)
+    assert refused.status_code == 400
     assert kit.services.asked == []
 
 
@@ -557,3 +593,41 @@ def test_the_journal_keeps_only_refusals_the_caller_would_get_again() -> None:
     assert {status_of(error)[1] for error in refusals} == TERMINAL_ERRORS
     for passing in (TransientError("later"), IntegrityError("lost")):
         assert status_of(passing)[1] not in TERMINAL_ERRORS
+
+
+async def test_a_refused_sign_in_still_carries_the_request_id_the_caller_can_quote(
+    service: Service,
+) -> None:
+    refused = await service.invoke(token="nobody", **{"x-request-id": "r-401"})
+    assert refused.status_code == 401
+    assert refused.json()["request_id"] == "r-401"
+    assert refused.headers["x-request-id"] == "r-401"
+    malformed = await service.client.post(
+        "/invoke",
+        json={"input": "hi"},
+        headers={"authorization": "Basic YW5uOnB3", "x-request-id": "r-402"},
+    )
+    assert malformed.status_code == 401
+    assert malformed.json()["request_id"] == "r-402"
+
+
+async def test_a_step_json_cannot_hold_ends_the_stream_with_an_internal_error() -> None:
+    async def steps(context: RequestContext, given: Any) -> Any:
+        yield {"node": "agent", "score": float("nan")}
+
+    lifecycle = ServiceLifecycle(_no_check)
+    await lifecycle.start()
+    app = agent_app(
+        _StreamServices(), _never, application="accounts-agent", lifecycle=lifecycle, stream=steps
+    )
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://agent.test") as http:
+        reply = await http.post(
+            "/invoke/stream",
+            json={"input": "go", "thread_id": "t-1"},
+            headers={"authorization": "Bearer good", "x-request-id": "r-6"},
+        )
+    assert "NaN" not in reply.text  # a browser's JSON.parse would refuse the stream
+    assert _events(reply.text) == [
+        ("error", {"error": "internal", "thread_id": "t-1", "request_id": "r-6"})
+    ]

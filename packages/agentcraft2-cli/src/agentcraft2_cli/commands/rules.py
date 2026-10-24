@@ -28,7 +28,8 @@ def policy() -> None:
     """Work with the rules of the workspace."""
 
 
-def _print_outcomes(engine: str, outcomes: tuple[Outcome, ...]) -> int:
+def _print_outcomes(engine: str, outcomes: tuple[Outcome, ...]) -> list[str]:
+    """Print what each sample came to and return the names of those that did not pass."""
     click.echo(engine)
     for outcome in outcomes:
         decided = "allow" if outcome.allow else "deny"
@@ -39,7 +40,7 @@ def _print_outcomes(engine: str, outcomes: tuple[Outcome, ...]) -> int:
                 f" ({outcome.sample.reason})" if outcome.sample.reason else ""
             )
             click.echo(f"        expected: {wanted}")
-    return sum(1 for outcome in outcomes if not outcome.passed)
+    return [outcome.sample.name for outcome in outcomes if not outcome.passed]
 
 
 @policy.command("test")
@@ -66,7 +67,9 @@ def policy_test(
     if not samples:
         raise CliError(f"{SAMPLES_FILE} holds no samples")
     by_rules = asyncio.run(decide_samples(samples, rules_engine(root.joinpath(*RULES_FILE.parts))))
-    failed = _print_outcomes("rules", by_rules)
+    # Sample names are distinct (the samples file refuses a repeated one), so a sample that
+    # both engines get wrong, or that they disagree on, is still one sample that failed.
+    failed = set(_print_outcomes("rules", by_rules))
     if with_opa:
         checkout = Path(answers.library.path) if answers.library.path else None
         chosen = bundle or (checkout / "policies" / "bundle" if checkout else None)
@@ -81,7 +84,7 @@ def policy_test(
                     await engine.aclose()
 
         by_opa = asyncio.run(decide_with_opa())
-        failed += _print_outcomes("opa", by_opa)
+        failed |= set(_print_outcomes("opa", by_opa))
         differ = [
             ours.sample.name
             for ours, theirs in zip(by_rules, by_opa, strict=True)
@@ -89,8 +92,9 @@ def policy_test(
         ]
         for name in differ:
             click.echo(f"  the two engines disagree on: {name}", err=True)
-        failed += len(differ)
+        failed |= set(differ)
     if failed:
-        raise CliError(f"{failed} sample{'s' if failed != 1 else ''} did not come out as expected")
+        count = len(failed)
+        raise CliError(f"{count} sample{'s' if count != 1 else ''} did not come out as expected")
     agreed = " The rules engine and OPA agree on every one." if with_opa else ""
     click.echo(f"{len(samples)} samples came out as expected.{agreed}")

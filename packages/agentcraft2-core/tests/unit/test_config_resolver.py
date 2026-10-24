@@ -345,3 +345,22 @@ def test_a_service_on_managed_compute_starts_once_it_names_its_environment() -> 
 def test_a_developer_shell_that_aws_marks_is_still_a_developers_machine() -> None:
     # CloudShell and CodeBuild set the same variable; neither is a deployed service.
     assert resolve({"AWS_EXECUTION_ENV": "CloudShell"}).deployment_env is DeploymentEnv.LOCAL
+
+
+@pytest.mark.parametrize(
+    ("variable", "value"),
+    [
+        ("AC2_MODEL_ALIASES", '{" fast": {"model_id": "m"}}'),
+        ("AC2_MODEL_OPTIONS", '{"": {}}'),
+    ],
+)
+def test_a_bad_alias_or_option_name_is_a_configuration_error_naming_the_variables(
+    variable: str, value: str
+) -> None:
+    with pytest.raises(ConfigurationError) as raised:
+        resolve({variable: value})
+    error = raised.value
+    assert "the model settings are not valid" in error.message
+    assert "AC2_MODEL_ALIASES" in str(error.fix)
+    assert "AC2_MODEL_OPTIONS" in str(error.fix)
+    assert isinstance(error.__cause__, ValueError)  # the exact reason is kept

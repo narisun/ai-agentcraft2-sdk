@@ -20,7 +20,7 @@ if not __package__:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from tools import package_runtime
-from tools.local_processes import Service, report, serve
+from tools.local_processes import Service, UncleanShutdownError, report, serve
 
 ROOT = Path(__file__).resolve().parents[1]
 UI_PROJECT = Path("packages/agentcraft2-ui")
@@ -364,7 +364,10 @@ def main(argv: Sequence[str] | None = None, *, root: Path = ROOT) -> int:
         )
         return 1
     except (OSError, ValueError, RuntimeError) as error:
-        report(f"Local startup error: {error}")
+        what = (
+            "Shutdown problem" if isinstance(error, UncleanShutdownError) else "Local startup error"
+        )
+        report(f"{what}: {error}")
         return 1
 
 

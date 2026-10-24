@@ -46,6 +46,7 @@ _REJECTED = frozenset(
 )
 _TRANSIENT = frozenset(
     {
+        "ActiveStatementsExceededException",
         "InternalFailure",
         "InternalServerException",
         "InternalServiceError",

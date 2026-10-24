@@ -17,6 +17,7 @@ from pathlib import Path, PurePosixPath
 from agentcraft2_cli.dataplan import API_RESPONSES_FILE
 from agentcraft2_cli.envfiles import DEV_ROLE, agent_env, mcp_env, variable_names
 from agentcraft2_cli.errors import CliError
+from agentcraft2_cli.files import read_text
 from agentcraft2_cli.formatting import Formatter, format_python
 from agentcraft2_cli.governance import (
     ANALYST_ROWS,
@@ -56,6 +57,7 @@ from agentcraft2_cli.workspace import (
     WorkspaceAnswers,
     load_answers,
 )
+from agentcraft2_core.contracts import describe
 
 __all__ = ["LOCK_FILE", "Scaffolder", "UpdateReport"]
 
@@ -152,10 +154,22 @@ class Scaffolder:
             files[PurePosixPath(WORKSPACE_FILE)] = empty.to_toml()
         report = self._write(root, files, answers, force=force)
         for server in answers.mcp_servers:
-            report = report.merged(self.add_mcp(root, server, force=force))
+            report = report.merged(self.add_mcp(root, server, pin=False, force=force))
         for agent in answers.agents:
             report = report.merged(self.add_agent(root, agent, force=force))
-        return report
+        # Pinning starts each server to ask it, which needs its dependencies installed:
+        # usually not yet, when a workspace is replayed. Everything is written first, and a
+        # pin that fails is reported with what to run, as 'new mcp' does, not raised.
+        notes: list[str] = []
+        for server in answers.mcp_servers:
+            try:
+                report = report.merged(self.pin(root, server.name))
+            except CliError as problem:
+                notes.append(
+                    f"{server.name} is not pinned ({problem.message}). "
+                    f"Pin later with: agentcraft2 registry pin {server.name}"
+                )
+        return replace(report, notes=report.notes + tuple(notes))
 
     # ---------------------------------------------------------------- servers
 
@@ -318,6 +332,7 @@ class Scaffolder:
         server_name: str,
         *,
         answers: WorkspaceAnswers | None = None,
+        force: bool = False,
     ) -> Report:
         """Let an agent call the tools of an MCP server of the same workspace.
 
@@ -326,6 +341,7 @@ class Scaffolder:
             agent_name: The agent.
             server_name: The MCP server, by name or registry ID.
             answers: The workspace's answers, when the caller has read them already.
+            force: Overwrite files the developer changed that the link would write.
 
         Raises:
             CliError: If either is not in the workspace.
@@ -362,7 +378,7 @@ class Scaffolder:
             self._existing(root, SAMPLES_FILE), [link_sample(agent.name, server)]
         )
         files[PurePosixPath(WORKSPACE_FILE)] = answers.to_toml()
-        return self._write(root, files, answers, refresh=frozenset(described))
+        return self._write(root, files, answers, refresh=frozenset(described), force=force)
 
     # ----------------------------------------------------------------- update
 
@@ -556,11 +572,16 @@ class Scaffolder:
         path = root / LOCK_FILE
         if not path.is_file():
             return {}
+        text = read_text(path, what="the lock file", fix="delete it to start a new record")
         try:
-            recorded = json.loads(path.read_text(encoding="utf-8")).get("files", {})
-        except (OSError, ValueError, AttributeError):
-            raise CliError(f"{path} cannot be read; delete it to start a new record") from None
-        return {str(name): str(digest) for name, digest in dict(recorded).items()}
+            recorded = dict(json.loads(text)["files"])
+        except (ValueError, KeyError, TypeError) as problem:
+            raise CliError(
+                f"the lock file ({path}) is not a lock file ({describe(problem)})",
+                expected='a JSON object with a "files" table of file names and hashes',
+                fix="delete it to start a new record",
+            ) from problem
+        return {str(name): str(digest) for name, digest in recorded.items()}
 
     @staticmethod
     def _write_lock(root: Path, lock: Mapping[str, str]) -> None:
@@ -587,7 +608,7 @@ class Scaffolder:
     @staticmethod
     def _existing(root: Path, relative: PurePosixPath) -> str | None:
         path = root.joinpath(*relative.parts)
-        return path.read_text(encoding="utf-8") if path.is_file() else None
+        return read_text(path, what="a generated file") if path.is_file() else None
 
     @staticmethod
     def _own_settings(root: Path, folder: str, name: str, text: str) -> dict[PurePosixPath, str]:

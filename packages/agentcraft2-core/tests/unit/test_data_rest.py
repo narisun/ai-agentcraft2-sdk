@@ -486,10 +486,13 @@ def test_plain_http_is_allowed_on_this_machine_or_when_asked_for(tmp_path: Path)
 async def test_a_ca_file_that_cannot_be_read_stops_startup(tmp_path: Path) -> None:
     not_a_ca = tmp_path / "ca.pem"
     not_a_ca.write_text("not a certificate", encoding="utf-8")
-    for ca_file in (not_a_ca, tmp_path / "absent.pem"):
+    # Each message says which file and why, so a missing file and a bad one differ.
+    for ca_file, reason in ((not_a_ca, "SSLError"), (tmp_path / "absent.pem", "FileNotFoundError")):
         source = RestDataSource("bank", options(tmp_path, ca_file=ca_file), FrozenClock())
-        with pytest.raises(ConfigurationError, match="ca_file could not be read"):
+        with pytest.raises(ConfigurationError, match="could not be read as a CA file") as raised:
             await source.start()
+        assert str(ca_file) in raised.value.message
+        assert reason in raised.value.message
 
 
 async def test_lifecycle_is_checked(tmp_path: Path) -> None:
@@ -549,3 +552,41 @@ async def test_the_container_gives_the_source_its_token_from_the_secrets_port(
     )
     with pytest.raises(ConfigurationError, match="secret 'absent' is not configured"):
         await ServiceContainer(missing, registry).start()
+
+
+async def test_a_definition_file_ending_in_yml_is_loaded_like_one_ending_in_yaml(
+    tmp_path: Path,
+) -> None:
+    queries_dir = write_accounts_endpoints(tmp_path, lookup=LOOKUP, search=SEARCH)
+    (queries_dir / "search.yaml").rename(queries_dir / "search.yml")
+    source = RestDataSource(
+        "bank",
+        RestOptions.model_validate(
+            {"base_url": "https://api.example.test/core/", "queries_dir": queries_dir}
+        ),
+        FrozenClock(),
+        transport=httpx.MockTransport(accounts_api),
+    )
+    await source.start()
+    assert "search" in source.describe()
+    await source.aclose()
+
+
+async def test_two_files_defining_the_same_query_stop_startup_naming_both(
+    tmp_path: Path,
+) -> None:
+    queries_dir = write_accounts_endpoints(tmp_path, lookup=LOOKUP, search=SEARCH)
+    (queries_dir / "lookup.yml").write_text(LOOKUP, encoding="utf-8")
+    source = RestDataSource(
+        "bank",
+        RestOptions.model_validate(
+            {"base_url": "https://api.example.test/core/", "queries_dir": queries_dir}
+        ),
+        FrozenClock(),
+        transport=httpx.MockTransport(accounts_api),
+    )
+    with pytest.raises(ConfigurationError, match="defined twice") as raised:
+        await source.start()
+    assert "lookup" in str(raised.value.actual)
+    assert "lookup.yaml" in str(raised.value.actual)
+    assert "lookup.yml" in str(raised.value.actual)

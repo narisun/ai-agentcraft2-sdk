@@ -276,8 +276,8 @@ class ProviderSpec:
             such as ``"bedrock"`` for ``agentcraft2-aws[bedrock]``.
         dependencies: Singleton ports to build first and allow through ``get``.
             ``()`` declares none; ``None`` keeps the legacy build order (defined
-            in ``ServiceContainer._selected``) and access to any already-built
-            singleton.
+            in ``agentcraft2_core.di.selection.selected_adapters``) and access to
+            any already-built singleton.
         contract: Optional typed descriptor used to check a factory's result.
     """
 
@@ -394,8 +394,8 @@ class ServiceProviders:
             replace: Allow overwriting an existing registration.
             dependencies: Singleton ports needed by this factory, built first.
                 ``None`` keeps the legacy build order (defined in
-                ``ServiceContainer._selected``) and access to any
-                already-built singleton.
+                ``agentcraft2_core.di.selection.selected_adapters``) and access to
+                any already-built singleton.
                 An explicit empty iterable declares no dependencies.
             profiles: The profiles the adapter may run under; ``None`` for any.
 

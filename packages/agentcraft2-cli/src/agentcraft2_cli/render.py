@@ -16,6 +16,7 @@ import yaml
 
 from agentcraft2_cli.errors import CliError
 from agentcraft2_cli.toml_text import toml_text
+from agentcraft2_core.adapters.strict_yaml import yaml_problem
 
 __all__ = ["Report", "TemplateRenderer", "validate_files", "write_files"]
 
@@ -101,8 +102,18 @@ def validate_files(files: Mapping[PurePosixPath, str]) -> None:
         except (SyntaxError, ValueError, yaml.YAMLError) as error:
             raise CliError(
                 f"generated {path} is not valid {path.suffix[1:]}",
+                actual=_why(error),
                 fix="correct the generation inputs or template; nothing was written",
             ) from error
+
+
+def _why(error: SyntaxError | ValueError | yaml.YAMLError) -> str:
+    """What is wrong and where, without quoting the generated text back."""
+    if isinstance(error, SyntaxError):
+        return f"{error.msg} (line {error.lineno})"
+    if isinstance(error, yaml.YAMLError):
+        return yaml_problem(error)
+    return str(error)
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,11 +124,14 @@ class Report:
         created: Files that did not exist.
         updated: Files whose content changed.
         unchanged: Files that already had the content.
+        notes: Things the command could not do and went on without, each with
+            the reason and what to run later.
     """
 
     created: tuple[Path, ...] = ()
     updated: tuple[Path, ...] = ()
     unchanged: tuple[Path, ...] = ()
+    notes: tuple[str, ...] = ()
 
     def merged(self, other: Report) -> Report:
         """Return the two reports as one."""
@@ -125,6 +139,7 @@ class Report:
             created=self.created + other.created,
             updated=self.updated + other.updated,
             unchanged=self.unchanged + other.unchanged,
+            notes=self.notes + other.notes,
         )
 
 

@@ -53,8 +53,9 @@ async def diagnose(
         config: The service's resolved configuration.
         providers: The provider registry. Defaults to the installed adapters.
     """
-    services = ServiceContainer(config, providers)
     try:
+        # Building the container can fail too, for example on a setting it validates.
+        services = ServiceContainer(config, providers)
         await services.start()
     except AgentCraft2Error as problem:
         return (CheckResult.failed(_STARTUP, problem),)

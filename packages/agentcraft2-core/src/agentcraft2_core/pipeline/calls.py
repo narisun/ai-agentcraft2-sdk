@@ -155,7 +155,10 @@ class ToolCall:
 
     def signal_attributes(self) -> Mapping[str, AuditValue]:
         """Return the few, low-cardinality facts that label telemetry."""
-        signal: dict[str, AuditValue] = {"tool": self.tool, "read_only": self.read_only}
+        # The span says "unnamed" for a name that is not shaped like one (a caller can send
+        # any text to an MCP server); so must the audit record and the metric label, or
+        # that text becomes unbounded label values.
+        signal: dict[str, AuditValue] = {"tool": _shown(self.tool), "read_only": self.read_only}
         if self.server is not None:
             signal["mcp_server"] = self.server
         return signal

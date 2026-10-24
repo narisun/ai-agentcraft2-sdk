@@ -31,7 +31,8 @@ async def _respond(
     result = await graph.ainvoke(
         {"messages": [HumanMessage(question)]}, **services.invocation(context)
     )
-    return {"answer": str(result["messages"][-1].content)}
+    # .text joins the text blocks of a reply; .content is a list for some providers.
+    return {"answer": str(result["messages"][-1].text)}
 
 
 async def _stream(

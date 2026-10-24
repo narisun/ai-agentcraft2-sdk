@@ -421,6 +421,12 @@ async def test_a_cancelled_call_cancels_its_statement(tmp_path: Path) -> None:
             TransientError,
             None,
         ),
+        (
+            # The Data API's limit on statements running at once: it clears as they finish.
+            client_error("ActiveStatementsExceededException", "ExecuteStatement"),
+            TransientError,
+            None,
+        ),
         (aws.EndpointConnectionError(endpoint_url="https://redshift-data"), TransientError, None),
         (aws.UnauthorizedSSOTokenError(), AgentCraft2Error, None),
     ],

@@ -33,7 +33,12 @@ __all__ = ["error_fields", "explain", "raised_at", "report_error", "shows_detail
 
 _MAX_TEXT = 2_000
 _MAX_FRAMES = 8
-_LIBRARY_PARTS = ("/agentcraft2_core/", "/agentcraft2_aws/", "/agentcraft2_cli/")
+_LIBRARY_PARTS = (
+    "/agentcraft2_core/",
+    "/agentcraft2_aws/",
+    "/agentcraft2_cli/",
+    "/agentcraft2_ui/",
+)
 _INSTALLED_PARTS = ("/site-packages/", "/dist-packages/")
 
 

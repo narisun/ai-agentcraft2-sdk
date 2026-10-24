@@ -24,6 +24,7 @@ from agentcraft2_core.adapters.registry_documents import (
     parse_tools_document,
     tools_document,
 )
+from agentcraft2_core.adapters.strict_yaml import yaml_problem
 from agentcraft2_core.contracts import AgentCraft2Error, AgentEntry, ServerEntry, describe
 
 __all__ = [
@@ -135,7 +136,7 @@ def _rule_ids(text: str, what: str) -> list[str]:
         raise CliError(
             f"{what} is not valid YAML",
             expected="a rules document: 'schema: agentcraft2.rules/v1' and a list of rules",
-            actual=str(exc).splitlines()[0][:120],
+            actual=yaml_problem(exc),
         ) from None
 
 

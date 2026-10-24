@@ -683,3 +683,24 @@ async def test_f1_matching_actor_and_subject_is_an_application_and_distinct_is_a
     claims.update({"sub": "ann", "azp": "chat-ui"})
     principal = await by_actor.verify(idp.sign(claims))
     assert (principal.subject, principal.kind) == ("ann", PrincipalKind.USER)
+
+
+async def test_a_failed_key_refresh_is_not_retried_on_every_verification(
+    idp: FakeIdentityProvider,
+) -> None:
+    clock = FrozenClock()
+    token = idp.user_token(audience=API, subject="u-1", expires_in=200_000)
+    warm = verifier(idp, clock, jwks_cache_seconds=60)
+    await warm.validate()
+    reads = len(idp.requests)
+
+    idp.available = False
+    clock.advance(120)  # the held keys are stale, so the next verification tries to refresh
+    for _ in range(5):
+        assert (await warm.verify(token)).subject == "u-1"  # the held keys still serve
+    assert len(idp.requests) == reads + 1, "one failed attempt, not one per verification"
+
+    clock.advance(60)
+    assert (await warm.verify(token)).subject == "u-1"
+    assert len(idp.requests) == reads + 2, "asked again once a minute has passed"
+    await warm.aclose()

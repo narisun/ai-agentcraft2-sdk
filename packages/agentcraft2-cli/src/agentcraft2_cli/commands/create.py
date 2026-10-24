@@ -20,6 +20,7 @@ from agentcraft2_cli.commands.common import (
 from agentcraft2_cli.commands.data_options import print_proposal, proposal_for, redshift_options
 from agentcraft2_cli.create_mcp import create_mcp, default_description
 from agentcraft2_cli.errors import CliError
+from agentcraft2_cli.files import read_text
 from agentcraft2_cli.names import check_name, server_id_for
 from agentcraft2_cli.toolbox import Toolbox
 from agentcraft2_cli.workspace import (
@@ -77,7 +78,7 @@ def init(
     """Create a workspace folder called NAME."""
     if answers_file is not None:
         answers = WorkspaceAnswers.from_toml(
-            answers_file.read_text(encoding="utf-8"), what=str(answers_file)
+            read_text(answers_file, what="the answers file"), what=str(answers_file)
         )
         if lib_path is not None or lib_version is not None:
             answers = replace(answers, library=library_source(lib_path, lib_version))
@@ -275,13 +276,14 @@ def new_mcp(
 @click.command()
 @click.argument("agent")
 @click.argument("server")
+@click.option("--force", is_flag=True, help="Overwrite files that exist and differ.")
 @workspace_option
 @pass_toolbox
-def link(tools: Toolbox, agent: str, server: str, workspace: Path | None) -> None:
+def link(tools: Toolbox, agent: str, server: str, force: bool, workspace: Path | None) -> None:
     """Let AGENT call the tools of the MCP server SERVER."""
     root = workspace_root(workspace)
     answers = load_answers(root)
-    report = tools.scaffolder().link(root, agent, server, answers=answers)
+    report = tools.scaffolder().link(root, agent, server, answers=answers, force=force)
     click.echo(f"{agent} may now call the tools of {server}")
     print_report(report, root)
     linked = answers.mcp_server(server)
@@ -332,7 +334,7 @@ def update(tools: Toolbox, show_diff: bool, plan_only: bool, workspace: Path | N
     for path in report.kept:
         click.echo(f"  kept     {path.as_posix()}  (you changed it)")
         if show_diff:
-            current = root.joinpath(*path.parts).read_text(encoding="utf-8")
+            current = read_text(root.joinpath(*path.parts), what="a kept file")
             lines = difflib.unified_diff(
                 current.splitlines(),
                 report.new_text[path].splitlines(),

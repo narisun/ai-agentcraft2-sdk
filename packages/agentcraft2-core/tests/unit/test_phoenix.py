@@ -926,3 +926,29 @@ def test_checkpoint_deadline_must_be_finite_and_positive(timeout: float) -> None
         PhoenixTracing(PhoenixSettings(), application="test", checkpoint_timeout_seconds=timeout)
     assert caught.value.expected == "a finite number of seconds greater than zero"
     assert caught.value.actual == repr(timeout)
+
+
+def test_a_blank_value_is_not_set_and_does_not_hide_the_file_behind_it(tmp_path: Path) -> None:
+    # docker-compose passes a host variable that is not set on as an empty value.
+    service = tmp_path / ".env"
+    service.write_text(
+        "AC2_PHOENIX_ENABLED=true"
+        + chr(10)
+        + "PHOENIX_COLLECTOR_ENDPOINT=http://127.0.0.1:7007"
+        + chr(10)
+    )
+    resolved = _resolve(
+        {"AC2_PHOENIX_ENABLED": "", "PHOENIX_COLLECTOR_ENDPOINT": "   "}, service=service
+    )
+    assert resolved.settings is not None
+    assert resolved.settings.base_url == "http://127.0.0.1:7007"
+
+
+def test_a_blank_canonical_value_next_to_a_legacy_one_is_no_conflict(tmp_path: Path) -> None:
+    service = tmp_path / ".env"
+    service.write_text("EAP_PHOENIX_CAPTURE_CONTENT=true" + chr(10))
+    resolved = _resolve(
+        {"AC2_PHOENIX_ENABLED": "true", "AC2_PHOENIX_CAPTURE_CONTENT": ""}, service=service
+    )
+    assert resolved.settings is not None
+    assert resolved.settings.capture_content

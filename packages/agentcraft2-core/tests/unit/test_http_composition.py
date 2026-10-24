@@ -22,6 +22,7 @@ from agentcraft2_core.contracts import (
 )
 from agentcraft2_core.di import ServiceContainer
 from agentcraft2_core.integrations.http import (
+    EXIT_INTERRUPTED,
     AgentService,
     OutcomeJournal,
     ServiceLifecycle,
@@ -594,3 +595,21 @@ async def test_an_agentcore_service_serves_the_runtime_contract_beside_its_own()
     await plain.build()
     async with plain.client() as client:
         assert (await client.get("/ping")).status_code == 404
+
+
+def test_run_agent_exits_130_when_interrupted_before_serving(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Ctrl+C while the service is being built is an interruption, not a traceback."""
+    monkeypatch.chdir(tmp_path)
+
+    async def interrupted(
+        service: AgentService, config: ServiceConfig, host: str, port: int
+    ) -> None:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(composition, "_serve", interrupted)
+    service = AgentService(application="probe", build_graph=_build_graph, respond=_respond)
+
+    assert run_agent(service, []) == EXIT_INTERRUPTED == 130
+    assert capsys.readouterr() == ("", "")

@@ -14,6 +14,7 @@ from typing import Literal, Self
 
 from agentcraft2_cli.dataplan import DataPlan, sample_plan
 from agentcraft2_cli.errors import CliError
+from agentcraft2_cli.files import read_text
 from agentcraft2_cli.toml_text import string_of, toml_list, toml_text
 
 __all__ = [
@@ -260,8 +261,5 @@ def find_workspace(start: Path) -> Path:
 def load_answers(root: Path) -> WorkspaceAnswers:
     """Read the workspace file of the workspace at ``root``."""
     path = root / WORKSPACE_FILE
-    try:
-        text = path.read_text(encoding="utf-8")
-    except OSError:
-        raise CliError(f"{path} cannot be read") from None
+    text = read_text(path, what="the workspace file")
     return WorkspaceAnswers.from_toml(text, what=str(path))

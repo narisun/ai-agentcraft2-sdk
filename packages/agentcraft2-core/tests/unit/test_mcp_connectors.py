@@ -22,6 +22,7 @@ from agentcraft2_core.contracts import (
     DeploymentEnv,
     IntegrityError,
     Limits,
+    NotStartedError,
     PolicyDenied,
     Principal,
     RequestContext,
@@ -416,3 +417,25 @@ async def test_the_connector_is_asked_first_when_calling_a_tool() -> None:
             "an unclassified error falls through to the agent side's own mapping"
         )
         assert connector.classified[-1] == "MCP server 'people', tool 'lookup'"
+
+
+async def test_one_connector_failing_to_close_does_not_leave_the_others_open() -> None:
+    factories = _Factories()
+    factories.fake("agentcore")
+    bindings = bindings_with(factories)
+    hosted = bindings.mcp_connector(HOSTED)
+    http = bindings.mcp_connector(PEOPLE)
+    assert isinstance(hosted, _FakeConnector)
+    assert isinstance(http, HttpMcpConnector)
+
+    async def refuse() -> None:
+        raise OSError("the transport is already gone")
+
+    hosted.aclose = refuse  # type: ignore[method-assign]
+    with pytest.raises(ExceptionGroup, match="closing MCP connectors") as raised:
+        await bindings.aclose()
+    assert [type(error) for error in raised.value.exceptions] == [OSError]
+    assert str(raised.value.exceptions[0]) == "the transport is already gone"
+    with pytest.raises(NotStartedError):
+        async with http.connect(PEOPLE, None):  # the HTTP connector was closed regardless
+            pass

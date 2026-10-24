@@ -185,15 +185,22 @@ def _runtimes(args: argparse.Namespace) -> "dict[str, AgentCoreRuntime]":
     from agentcraft2_ui.contracts.catalog import AgentCoreRuntime
 
     result: dict[str, AgentCoreRuntime] = {}
+    # Checked once, whether or not a runtime is named: options that would be ignored without
+    # a word are refused instead.
+    token_file = args.agentcore_token_file
+    if (args.agentcore_auth == "bearer") != (token_file is not None):
+        raise ValueError(
+            "--agentcore-auth bearer needs --agentcore-token-file, and "
+            "--agentcore-token-file goes with --agentcore-auth bearer only"
+        )
+    if not args.agentcore_runtime and token_file is not None:
+        raise ValueError("--agentcore-token-file and --agentcore-auth apply to --agentcore-runtime")
     for item in args.agentcore_runtime or ():
         agent_id, separator, arn = item.partition("=")
         if not separator or not agent_id or agent_id not in args.agent:
             raise ValueError("--agentcore-runtime takes AGENT=ARN for an agent given with --agent")
         if agent_id in result:
             raise ValueError(f"--agentcore-runtime names agent {agent_id!r} twice")
-        token_file = args.agentcore_token_file
-        if (args.agentcore_auth == "bearer") != (token_file is not None):
-            raise ValueError("--agentcore-token-file goes with --agentcore-auth bearer only")
         result[agent_id] = AgentCoreRuntime(
             arn=arn,
             auth=args.agentcore_auth,
@@ -203,23 +210,37 @@ def _runtimes(args: argparse.Namespace) -> "dict[str, AgentCoreRuntime]":
 
 
 def _safe_message(error: Exception) -> str:
-    """Describe a startup failure without its text, which may repeat .env content.
+    """Describe a startup failure without the values it rejected, which may be .env content.
 
-    Pydantic and provider errors quote the values they rejected, so only the
-    kind of failure and where to look are printed. A ValueError is one of this
-    module's own messages, written to be shown.
+    Pydantic and provider errors quote the values they rejected, so their text is never
+    printed. What can be said safely is said exactly: which fields were invalid and why
+    (not what they held), where a JSON document stopped parsing, which file the operating
+    system refused and its reason, and the library's own messages, which never hold caller
+    content. A ValueError is one of this module's own messages, written to be shown.
     """
     from pydantic import ValidationError
 
     from agentcraft2_core.contracts import ConfigurationError
+    from agentcraft2_core.contracts.redaction import redact, shorten
     from agentcraft2_ui.contracts.queries import ContractError
 
     if isinstance(error, ContractError):
         return error.code.value + "; check registry IDs, urls and configuration pins"
-    if isinstance(error, (ValidationError, ConfigurationError, json.JSONDecodeError)):
-        return "invalid settings or registry; check the documented field names and values"
+    if isinstance(error, ValidationError):
+        problems = [
+            f"{'.'.join(str(part) for part in found['loc']) or 'settings'} ({found['type']})"
+            for found in error.errors(include_input=False, include_url=False, include_context=False)
+        ]
+        shown = "; ".join(problems[:8]) + ("; ..." if len(problems) > 8 else "")
+        return f"invalid settings or registry: {shown}"
+    if isinstance(error, json.JSONDecodeError):
+        return f"invalid JSON: {error.msg} (line {error.lineno}, column {error.colno})"
+    if isinstance(error, ConfigurationError):
+        return shorten(redact(error.message), 300)
     if isinstance(error, OSError):
-        return "a required file could not be read or written; check paths and folder permissions"
+        reason = error.strerror or "the operation failed"
+        where = f": {error.filename}" if error.filename else ""
+        return f"a required file could not be read or written ({reason}{where})"
     if isinstance(error, ValueError):
         return str(error)
     return "UI startup failed; verify the separate UI environment and configuration"

@@ -249,3 +249,18 @@ async def test_current_principal_requires_a_live_session(runtime: Runtime) -> No
     with pytest.raises(HTTPException) as revoked:
         await current_principal(runtime)
     assert revoked.value.status_code == 401
+
+
+async def test_a_badly_formed_cookie_from_another_local_app_does_not_hide_the_session(
+    runtime: Runtime, boundary: SessionBoundary, downstream: Downstream
+) -> None:
+    # Browsers send every 127.0.0.1 cookie to every port, so another app's cookie can sit
+    # in front of ours. A parser that stops at the first one it cannot read loses ours.
+    token = await runtime.store.new_session(runtime.identity)
+    for cookie in (
+        f"other=a b; agentcraft2_session={token}",
+        f'prefs={{"a": 1}}; agentcraft2_session={token}',
+    ):
+        scope = scope_for("/api/threads", cookie=cookie)
+        status, _, _ = status_and_body(await call(boundary, scope))
+        assert status == 200, cookie

@@ -15,6 +15,14 @@ from agentcraft2_ui.contracts.queries import ContractError, ErrorCode, ViewConte
 logger = logging.getLogger(__name__)
 
 
+def _unsupported(inspection: TurnInspection) -> TurnInspection:
+    """The inspection of an agent that does not offer one: every section says so."""
+    missing = InspectionSection(availability="unsupported")
+    return inspection.model_copy(
+        update=dict.fromkeys(("model_inputs", "model_outputs", "mcp", "checkpoints"), missing)
+    )
+
+
 async def fetch_inspection(
     client: httpx.AsyncClient, view: ViewContext, binding: AgentBinding, run: RunRecord
 ) -> TurnInspection:
@@ -24,6 +32,10 @@ async def fetch_inspection(
     unavailable = TurnInspection(
         scope=run.scope, thread_id=run.thread_id, request_id=run.request_id
     )
+    if binding.runtime is not None:
+        # The runtime proxies only /invocations, so this route cannot be reached through it.
+        # Asking anyway would send an unsigned request to AWS, which refuses it.
+        return _unsupported(unavailable)
     try:
         async with asyncio.timeout(10):
             async with client.stream(
@@ -34,12 +46,7 @@ async def fetch_inspection(
                 follow_redirects=False,
             ) as response:
                 if response.status_code == 404:
-                    missing = InspectionSection(availability="unsupported")
-                    return unavailable.model_copy(
-                        update=dict.fromkeys(
-                            ("model_inputs", "model_outputs", "mcp", "checkpoints"), missing
-                        )
-                    )
+                    return _unsupported(unavailable)
                 if response.status_code != 200:
                     return unavailable
                 body = bytearray()

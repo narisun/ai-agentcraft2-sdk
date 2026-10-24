@@ -34,6 +34,7 @@ from agentcraft2_core.contracts import (
 from agentcraft2_core.di import ServiceContainer
 from agentcraft2_core.integrations.http.agent import agent_app
 from agentcraft2_core.integrations.http.agentcore import agentcore_app
+from agentcraft2_core.integrations.http.entrypoint import EXIT_INTERRUPTED
 from agentcraft2_core.integrations.http.lifecycle import ServiceLifecycle
 from agentcraft2_core.integrations.http.outcomes import OutcomeJournal
 from agentcraft2_core.integrations.http.serving import serve
@@ -336,6 +337,8 @@ def run_agent(service: AgentService, argv: Sequence[str] | None = None) -> int:
             asyncio.run(_serve(service, config, host, port))
         finally:
             stop_telemetry()
+    except KeyboardInterrupt:
+        return EXIT_INTERRUPTED
     except Exception as error:  # noqa: BLE001 - every failure is explained, then the exit code
         return report_error(f"{service.application}-serve", error, details=shows_details(config))
     return 0

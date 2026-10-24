@@ -320,7 +320,11 @@ class AgentSnapshot:
         for entry in self._entries.values():
             if entry.client_id is None:
                 continue
-            if entry.client_id in by_client or entry.client_id in self._entries:
+            # An agent whose client ID is its own ID is one registration, not two.
+            taken_by_another_agent = (
+                entry.client_id in self._entries and self._entries[entry.client_id] is not entry
+            )
+            if entry.client_id in by_client or taken_by_another_agent:
                 raise ValueError("an agent client ID is registered more than once")
             by_client[entry.client_id] = entry
         self._by_client: Mapping[str, AgentEntry] = MappingProxyType(by_client)

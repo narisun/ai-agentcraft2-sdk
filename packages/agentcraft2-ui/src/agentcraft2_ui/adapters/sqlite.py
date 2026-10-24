@@ -5,6 +5,7 @@ import base64
 import hashlib
 import hmac
 import json
+import os
 import secrets
 import sqlite3
 import time
@@ -62,6 +63,10 @@ class SqliteThreads:
         self.path, self.authorizer, self.cursor_secret = path, authorizer, cursor_secret
         self.commit_hook = commit_hook
         path.parent.mkdir(parents=True, exist_ok=True)
+        if not path.exists():
+            # Private to its owner: the file holds every conversation. SQLite gives its
+            # journal files the same mode as this one.
+            os.close(os.open(path, os.O_CREAT | os.O_WRONLY, 0o600))
         with self.connection() as db:
             db.executescript(
                 files("agentcraft2_ui").joinpath("migrations/001_local.sql").read_text()
