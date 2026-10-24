@@ -100,3 +100,11 @@ async def test_compose_is_reentrant_and_the_callback_slot_serves_one_runtime(
     finally:
         await other.chat.close()
         await other.client.aclose()
+
+
+async def test_a_mistyped_access_code_with_other_characters_is_refused_not_a_server_error(
+    client: httpx.AsyncClient,
+) -> None:
+    refused = await client.post("/login", data={"code": "caf\u00e9"})
+    assert refused.status_code == 401
+    assert refused.json() == {"detail": "Access code did not match"}

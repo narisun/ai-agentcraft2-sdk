@@ -87,16 +87,27 @@ def default_credentials() -> AwsCredentials | None:
     """
     try:
         import boto3
+        from botocore.exceptions import BotoCoreError, ClientError
     except ImportError as error:
         logger.error(
             "AgentCore Runtime requests need the aws extra: pip install agentcraft2-ui[aws]",
             extra={"missing": error.name},
         )
         raise ContractError(ErrorCode.UNAVAILABLE) from error
-    credentials = boto3.Session().get_credentials()
-    if credentials is None:
-        return None
-    frozen: AwsCredentials = credentials.get_frozen_credentials()
+    try:
+        credentials = boto3.Session().get_credentials()
+        if credentials is None:
+            return None
+        frozen: AwsCredentials = credentials.get_frozen_credentials()
+    except (BotoCoreError, ClientError) as error:
+        # An expired SSO session, an unknown profile, a role that cannot be assumed. Nothing
+        # has been sent, so this must be the known failure the dispatcher records, not an
+        # unexpected error that would save the run as outcome-unknown and hold the thread.
+        logger.error(
+            "AWS credentials could not be resolved for an AgentCore Runtime request",
+            extra={"error_type": type(error).__name__},
+        )
+        raise ContractError(ErrorCode.UNAVAILABLE) from error
     return frozen
 
 

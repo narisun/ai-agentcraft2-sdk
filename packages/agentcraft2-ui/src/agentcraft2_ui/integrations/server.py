@@ -192,7 +192,9 @@ def parent_app(resources: Runtime) -> FastAPI:
         code: Annotated[str, Form(max_length=200)],
         return_to: Annotated[str, Form(alias="next", max_length=2048)] = "/chat/",
     ) -> RedirectResponse:
-        if not hmac.compare_digest(code, resources.access_code):
+        # Bytes, because comparing text raises TypeError for a character outside ASCII,
+        # which would answer a mistyped code with a server error instead of a refusal.
+        if not hmac.compare_digest(code.encode(), resources.access_code.encode()):
             raise HTTPException(401, "Access code did not match")
         token = await resources.store.new_session(resources.identity)
         response = RedirectResponse(login_destination(return_to), status_code=303)

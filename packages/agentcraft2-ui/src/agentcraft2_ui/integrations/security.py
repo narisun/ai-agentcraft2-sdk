@@ -1,11 +1,11 @@
 """Authenticate the parent session before every HTTP and WebSocket route."""
 
 import contextvars
-from http.cookies import CookieError, SimpleCookie
 from urllib.parse import urlencode
 
 import jwt
 from fastapi import HTTPException
+from starlette.requests import cookie_parser
 from starlette.responses import JSONResponse, RedirectResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
@@ -63,15 +63,17 @@ class SessionBoundary:
             }:
                 await self.app(scope, receive, send)
                 return
-            cookie = SimpleCookie()
-            cookie.load(headers.get(b"cookie", b"").decode("latin1"))
-            token = cookie["agentcraft2_session"].value if "agentcraft2_session" in cookie else ""
+            # Browsers send every cookie of 127.0.0.1 to every port, so another local app's
+            # badly formed cookie can sit in this header. SimpleCookie stops reading at the
+            # first one it cannot parse and hides the ones after it; this reads pair by pair.
+            cookies = cookie_parser(headers.get(b"cookie", b"").decode("latin1"))
+            token = cookies.get("agentcraft2_session", "")
             await self.resources.store.session(token, self.resources.identity)
             if path == "/chat/mcp" or path.startswith("/chat/project/file"):
                 raise HTTPException(404, "This feature is not enabled")
-            if "agentcraft2_chat" in cookie and path != "/chat/auth/header":
+            if "agentcraft2_chat" in cookies and path != "/chat/auth/header":
                 claims = jwt.decode(
-                    cookie["agentcraft2_chat"].value,
+                    cookies["agentcraft2_chat"],
                     self.resources.auth_secret,
                     algorithms=["HS256"],
                 )
@@ -92,7 +94,7 @@ class SessionBoundary:
             finally:
                 session_token.reset(context)
             return
-        except (ContractError, jwt.PyJWTError, CookieError):
+        except (ContractError, jwt.PyJWTError):
             error = HTTPException(401, "Sign in to the local UI")
         except HTTPException as caught:
             error = caught
