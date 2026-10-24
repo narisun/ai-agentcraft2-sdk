@@ -8,21 +8,24 @@ Rego bundle as well, which is what a deployed service uses. The two must agree.
 
 from __future__ import annotations
 
+import shlex
 import shutil
 import socket
 import subprocess
+import tempfile
 import time
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Annotated, Any, Literal
+from typing import IO, Annotated, Any, Literal
 
 import httpx
 import yaml
 from pydantic import BeforeValidator, Field, ValidationError
 
 from agentcraft2_cli.errors import CliError
+from agentcraft2_cli.files import read_text
 from agentcraft2_cli.yaml_lists import extended, yaml_flow, yaml_scalar
 from agentcraft2_core.adapters import (
     OpaPolicyDecisionPoint,
@@ -171,10 +174,9 @@ def load_samples(path: Path) -> list[Sample]:
     Raises:
         CliError: If it is missing or not a samples document.
     """
-    try:
-        text = path.read_text(encoding="utf-8")
-    except OSError:
-        raise CliError(f"{path} cannot be read; there are no samples to try") from None
+    text = read_text(
+        path, what="the policy samples file", fix="there are no samples to try without it"
+    )
     return _parse(text, str(path))
 
 
@@ -294,14 +296,15 @@ def opa_server(
     if not bundle.is_dir():
         raise CliError(f"the platform's Rego bundle was not found at {bundle}; give --bundle")
     url = f"http://127.0.0.1:{_free_port()}"
-    # OPA's stderr is kept: when it exits early, its last lines say why (a Rego
-    # error, a bad bundle path, a port in use). Its stdout is of no use here.
+    command = [binary, "run", "--server", "--addr", url.removeprefix("http://"),
+               "--log-level", "error", "-b", str(bundle), str(policies)]  # fmt: skip
+    # OPA's stderr is kept in a file, not a pipe nobody reads: when it exits early, its last
+    # lines say why (a Rego error, a bad bundle path, a port in use), and a chatty OPA
+    # cannot fill a pipe and stall. Its stdout is of no use here.
+    errors = tempfile.TemporaryFile()  # noqa: SIM115 - closed in the finally below
     process = subprocess.Popen(  # noqa: S603 - a fixed command line, no shell
-        [binary, "run", "--server", "--addr", url.removeprefix("http://"),
-         "--log-level", "error", "-b", str(bundle), str(policies)],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.PIPE,
-    )  # fmt: skip
+        command, stdout=subprocess.DEVNULL, stderr=errors
+    )
     try:
         deadline = time.monotonic() + wait_seconds
         while True:
@@ -313,8 +316,8 @@ def opa_server(
             if process.poll() is not None:
                 raise CliError(
                     "OPA did not start with the bundle and the rules of this workspace",
-                    actual=f"opa exited with code {process.returncode}: {_stderr_tail(process)}",
-                    fix="run the printed opa command by hand to see its full output",
+                    actual=f"opa exited with code {process.returncode}: {_stderr_tail(errors)}",
+                    fix=f"run it by hand to see its full output: {shlex.join(command)}",
                 )
             if time.monotonic() > deadline:
                 raise CliError(
@@ -330,13 +333,11 @@ def opa_server(
             process.wait(timeout=10)
         except subprocess.TimeoutExpired:
             process.kill()
-        if process.stderr is not None:
-            process.stderr.close()
+        errors.close()
 
 
-def _stderr_tail(process: subprocess.Popen[bytes], lines: int = 5) -> str:
+def _stderr_tail(errors: IO[bytes], lines: int = 5) -> str:
     """Return the last lines OPA wrote to stderr, once it has exited."""
-    if process.stderr is None:
-        return "no output"
-    text = process.stderr.read().decode("utf-8", errors="replace").strip()
+    errors.seek(0)
+    text = errors.read().decode("utf-8", errors="replace").strip()
     return " | ".join(text.splitlines()[-lines:]) or "no output"

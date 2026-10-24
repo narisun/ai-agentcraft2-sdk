@@ -532,3 +532,26 @@ def test_an_agent_missing_from_the_registry_cannot_be_linked(
     capsys.readouterr()
     assert run("link", "hello-agent", "hello", "--workspace", workspace) == 1
     assert "is not in registry/agents.yaml" in capsys.readouterr().err
+
+
+def test_replaying_a_workspace_without_the_servers_dependencies_still_writes_all_of_it(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    answers = WorkspaceAnswers(
+        name="demo",
+        owner="demo-team",
+        library=LibrarySource(kind="index", version=">=0.1"),
+        agents=(AgentAnswers("hello-agent", "Greets people.", "fake", 8000, ("hello",)),),
+        mcp_servers=(McpAnswers("hello-mcp", "hello", "A directory.", 8100),),
+    )
+
+    def cannot_ask(service_dir: Path, package: str) -> dict[str, str]:
+        raise CliError("hello-mcp could not be started to read its tools (ModuleNotFoundError)")
+
+    root = tmp_path / "replayed"
+    report = Scaffolder(pin_reader=cannot_ask, formatter=as_written).init(root, answers)
+    # The agent was written even though the server could not be pinned.
+    assert (root / "agents" / "hello-agent" / "src" / "hello_agent" / "graph.py").is_file()
+    (note,) = report.notes
+    assert "hello-mcp is not pinned (hello-mcp could not be started" in note
+    assert "agentcraft2 registry pin hello-mcp" in note

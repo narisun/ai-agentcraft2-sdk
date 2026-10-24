@@ -115,11 +115,15 @@ def _read_settings(
 ) -> tuple[ServiceConfig, tuple[tuple[str, str], ...], ConfigSource]:
     path = root.joinpath(*target.settings.parts)
     if not path.is_file():
+        # The starting file differs by platform, so the command must name the platform too.
+        command = f"agentcraft2 deploy {target.name}"
+        if target.platform == AGENTCORE:
+            command += " --target agentcore"
         raise CliError(
             f"{target.settings} does not exist",
             expected=f"the settings {target.name} runs with in AWS, in {target.settings}",
             actual="no such file",
-            fix=f"run 'agentcraft2 deploy {target.name}' to write a starting one, then fill it in",
+            fix=f"run '{command}' to write a starting one, then fill it in",
         )
     source = DotenvConfigSource(path, required=True)
     # The deployment's own variables are read by the plan, not by the service's configuration.
@@ -214,7 +218,7 @@ def _project(root: Path, target: Target) -> dict[str, Any]:
     path = root.joinpath(*target.folder.parts, "pyproject.toml")
     try:
         project = tomllib.loads(path.read_text(encoding="utf-8")).get("project", {})
-    except (OSError, tomllib.TOMLDecodeError) as exc:
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
         raise CliError(
             f"{target.folder}/pyproject.toml could not be read ({describe(exc)})",
             expected="the service's pyproject.toml with a [project] table",

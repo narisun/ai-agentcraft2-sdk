@@ -756,3 +756,7 @@ def test_an_opa_that_exits_early_reports_its_own_last_lines(tmp_path: Path) -> N
     assert refused.value.actual is not None
     assert "exited with code" in refused.value.actual
     assert "run" in refused.value.actual  # the interpreter names the argument it could not open
+    # The fix gives the exact command, so the full output is one paste away.
+    assert refused.value.fix is not None
+    assert "run --server --addr 127.0.0.1:" in refused.value.fix
+    assert str(tmp_path / "bundle") in refused.value.fix

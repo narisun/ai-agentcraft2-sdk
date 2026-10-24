@@ -9,6 +9,7 @@ import click
 
 from agentcraft2_cli.commands.common import pass_toolbox, workspace_option, workspace_root
 from agentcraft2_cli.errors import CliError
+from agentcraft2_cli.files import read_text
 from agentcraft2_cli.toolbox import Toolbox
 from agentcraft2_cli.workspace import AGENTS_FOLDER, SERVERS_FOLDER, load_answers
 
@@ -28,7 +29,14 @@ def installation_arguments(root: Path, *, dev: bool = True) -> tuple[str, ...]:
         for package in ("agentcraft2-core", "agentcraft2-aws", "agentcraft2-cli"):
             arguments.extend(("--editable", str(checkout / "packages" / package)))
     if dev:
-        project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+        pyproject = root / "pyproject.toml"
+        try:
+            project = tomllib.loads(read_text(pyproject, what="the workspace pyproject.toml"))
+        except tomllib.TOMLDecodeError as problem:
+            raise CliError(
+                f"the workspace pyproject.toml ({pyproject}) is not valid TOML ({problem})",
+                fix="repair the file, then run 'agentcraft2 install' again",
+            ) from problem
         requirements = project.get("dependency-groups", {}).get("dev", [])
         if not all(isinstance(item, str) for item in requirements):
             raise CliError("the dev dependency group must contain requirement strings")

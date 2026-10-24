@@ -311,3 +311,54 @@ def test_stop_batch_runs_from_another_directory_with_spaces(tmp_path: Path) -> N
         )
         assert result.returncode == 0, result.stdout + result.stderr
         assert ("usage:" if argument else "No managed local launchers") in result.stdout
+
+
+def test_a_second_interrupt_stops_the_remaining_children_at_once(tmp_path: Path) -> None:
+    # Children run in their own process groups, so the terminal's Ctrl+C never reaches
+    # them. An interrupt while waiting for one must not leave the others running.
+    first, second = Mock(), Mock()
+    first.poll.return_value = second.poll.return_value = None
+    second.wait.side_effect = [KeyboardInterrupt(), 0]  # the polite wait, then the kill
+    children = [
+        local_processes.RunningService(Service(name, (), tmp_path, port), child, tmp_path / name)
+        for name, child, port in [("mcp", first, 8100), ("ui", second, 8765)]
+    ]
+    assert not local_processes.stop_children(children)
+    second.kill.assert_called_once()  # the child that was being waited for
+    first.kill.assert_called_once()  # the child that had not been asked yet
+    first.send_signal.assert_not_called()
+
+
+def test_a_service_that_does_not_stop_cleanly_fails_the_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    child = Mock()
+    child.poll.return_value = None
+    child.wait.return_value = 1  # exits non-zero after the stop request
+    monkeypatch.setattr(local_processes, "check_ports", Mock())
+    monkeypatch.setattr("tools.local_processes.subprocess.Popen", Mock(return_value=child))
+    monkeypatch.setattr(local_processes, "is_ready", Mock(return_value=True))
+    logs = tmp_path / "logs"
+    with pytest.raises(local_processes.UncleanShutdownError, match="stopped cleanly"):
+        local_processes.serve(
+            [Service("ui", (sys.executable,), tmp_path, 8765)], logs, smoke_test=True
+        )
+    assert status(logs)["state"] == "shutdown_failed"
+
+
+def test_a_shutdown_problem_does_not_hide_the_startup_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    child = Mock()
+    child.poll.return_value = None
+    child.wait.return_value = 1
+    monkeypatch.setattr(local_processes, "check_ports", Mock())
+    monkeypatch.setattr("tools.local_processes.subprocess.Popen", Mock(return_value=child))
+    monkeypatch.setattr(local_processes, "is_ready", Mock(return_value=False))
+    monkeypatch.setattr("tools.local_processes.time.sleep", Mock())
+    ticks = iter([0.0, 0.0, 999.0, 999.0, 999.0, 999.0])
+    monkeypatch.setattr("tools.local_processes.time.monotonic", lambda: next(ticks, 999.0))
+    with pytest.raises(RuntimeError, match="did not become ready"):
+        local_processes.serve(
+            [Service("ui", (sys.executable,), tmp_path, 8765)], tmp_path / "logs", startup_timeout=1
+        )

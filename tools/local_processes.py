@@ -86,41 +86,73 @@ def check_children(children: Sequence[RunningService]) -> None:
             )
 
 
+class UncleanShutdownError(RuntimeError):
+    """A service did not stop cleanly, or the stop was cut short by a second interrupt."""
+
+
+def _kill(child: RunningService) -> None:
+    """Force one child to stop. A failure is reported and never strands the others."""
+    try:
+        child.process.kill()
+        child.process.wait(timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        report(f"Could not confirm {child.service.name} stopped; check {child.log}")
+
+
+def _stop_one(child: RunningService) -> bool:
+    """Ask one child to stop and wait for it. Return whether it ended as requested."""
+    try:
+        code = child.process.poll()
+        signalled = code is None
+        if code is None:
+            report(f"Stopping {child.service.name}...")
+            if sys.platform == "win32":
+                event = signal.CTRL_BREAK_EVENT
+            else:
+                event = signal.SIGINT
+            child.process.send_signal(event)
+            # Core services allow up to 20 seconds for requests in flight,
+            # then close their adapters. Leave time for both.
+            code = child.process.wait(timeout=30)
+        # Uvicorn re-raises a handled shutdown signal after its lifespan
+        # closes. Accept that platform exit only when we requested it;
+        # unrelated failures (including exit 1) remain failures.
+        interrupt_codes = {130, 3221225786, -1073741510} if sys.platform == "win32" else {130, -2}
+        if code != 0 and not (signalled and code in interrupt_codes):
+            report(f"{child.service.name} exited with code {code}; check {child.log}")
+            return False
+    except (OSError, subprocess.TimeoutExpired):
+        report(f"Forcing {child.service.name} to stop after graceful shutdown was unavailable.")
+        _kill(child)
+        return False
+    return True
+
+
 def stop_children(children: Sequence[RunningService]) -> bool:
-    """Stop only our children, in reverse dependency order, with a bounded grace period."""
+    """Stop only our children, in reverse dependency order, with a bounded grace period.
+
+    A second Ctrl+C while waiting does not abandon the remaining children: they run
+    in their own process groups, so the terminal's interrupt never reaches them. It
+    ends the polite wait, and every child not yet stopped is killed at once.
+
+    Returns:
+        Whether every child ended as requested.
+    """
     graceful = True
+    hurried = False
     for child in reversed(children):
+        if hurried:
+            if child.process.poll() is None:
+                report(f"Forcing {child.service.name} to stop.")
+                _kill(child)
+            continue
         try:
-            code = child.process.poll()
-            signalled = code is None
-            if code is None:
-                report(f"Stopping {child.service.name}...")
-                if sys.platform == "win32":
-                    event = signal.CTRL_BREAK_EVENT
-                else:
-                    event = signal.SIGINT
-                child.process.send_signal(event)
-                # Core services allow up to 20 seconds for requests in flight,
-                # then close their adapters. Leave time for both.
-                code = child.process.wait(timeout=30)
-            # Uvicorn re-raises a handled shutdown signal after its lifespan
-            # closes. Accept that platform exit only when we requested it;
-            # unrelated failures (including exit 1) remain failures.
-            interrupt_codes = (
-                {130, 3221225786, -1073741510} if sys.platform == "win32" else {130, -2}
-            )
-            if code != 0 and not (signalled and code in interrupt_codes):
-                graceful = False
-                report(f"{child.service.name} exited with code {code}; check {child.log}")
-        except (OSError, subprocess.TimeoutExpired):
+            graceful &= _stop_one(child)
+        except KeyboardInterrupt:
+            hurried = True
             graceful = False
-            report(f"Forcing {child.service.name} to stop after graceful shutdown was unavailable.")
-            try:
-                child.process.kill()
-                child.process.wait(timeout=5)
-            except (OSError, subprocess.TimeoutExpired):
-                # Cleanup of one child must never strand the remaining services.
-                report(f"Could not confirm {child.service.name} stopped; check {child.log}")
+            report(f"Interrupted again while stopping {child.service.name}; stopping the rest now.")
+            _kill(child)
     return graceful
 
 
@@ -140,6 +172,20 @@ def serve(
     log_dir.mkdir(parents=True, exist_ok=False)
     with RunControl(log_dir, [service.name for service in services]).own() as control:
         _serve(services, log_dir, control, startup_timeout=startup_timeout, smoke_test=smoke_test)
+
+
+def _unclean_shutdown(log_dir: Path, failing: BaseException | None) -> None:
+    """Say that a service did not stop cleanly: in the exit code, unless another error leads."""
+    problem = (
+        "Not every service stopped cleanly. Read the messages above and the "
+        f"service logs in {log_dir}."
+    )
+    if failing is None or isinstance(failing, KeyboardInterrupt):
+        # A smoke test or a script must not read this as a pass. A user's Ctrl+C is not
+        # itself a failure, so it does not hide this.
+        raise UncleanShutdownError(problem)
+    # Another error is already on its way out and explains more; keep it.
+    report(problem)
 
 
 def _serve(
@@ -192,6 +238,7 @@ def _serve(
             check_children(children)
             time.sleep(0.5)
     finally:
+        failing = sys.exc_info()[1]
         try:
             control.update("stopping")
         finally:
@@ -202,3 +249,5 @@ def _serve(
                 control.update("shutdown_failed")
                 raise
             control.update("stopped" if graceful else "shutdown_failed")
+            if not graceful:
+                _unclean_shutdown(log_dir, failing)

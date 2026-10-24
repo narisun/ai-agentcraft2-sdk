@@ -95,3 +95,5 @@ def print_report(report: Report, root: Path) -> None:
             click.echo(f"  {label}  {path.relative_to(root).as_posix()}")
     if not report.created and not report.updated:
         click.echo("  nothing to do: every file is already as it would be written")
+    for note in report.notes:
+        click.echo(note, err=True)

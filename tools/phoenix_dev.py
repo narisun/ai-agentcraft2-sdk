@@ -14,7 +14,7 @@ if not __package__:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from tools import package_runtime
-from tools.local_processes import Service, report, serve
+from tools.local_processes import Service, UncleanShutdownError, report, serve
 from tools.phoenix_server import PINNED_VERSION as VERSION
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -147,7 +147,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     except KeyboardInterrupt:
         report("Phoenix stopped. Saved traces are kept.")
     except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError) as error:
-        report(f"Phoenix could not start: {error}")
+        what = (
+            "Phoenix shutdown problem"
+            if isinstance(error, UncleanShutdownError)
+            else "Phoenix could not start"
+        )
+        report(f"{what}: {error}")
         return 1
     return 0
 

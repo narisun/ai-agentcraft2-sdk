@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 from agentcraft2_cli.deploy.plan import DeploymentPlan
 from agentcraft2_cli.errors import CliError
 from agentcraft2_core.config import options_key, provider_key, variable_for
+from agentcraft2_core.config.bindings import legacy_spelling
 from agentcraft2_core.contracts import Access, Section
 from agentcraft2_core.contracts.access import ACCOUNT, REGION
 
@@ -159,11 +160,12 @@ def agentcore_settings_tf(plan: DeploymentPlan, header: str) -> str:
     if settings is None:
         raise CliError(f"{plan.target.name} is planned for {plan.target.platform}, not agentcore")
     environment = dict(plan.environment)
-    checkpoint = environment.get(provider_key_variable(Section.CHECKPOINT))
+    # The settings file may still spell a variable the way it was spelled before the AC2_
+    # prefix; the service accepts that for now, so the memory ID must go where it will be read.
+    _, checkpoint = _written(environment, provider_key_variable(Section.CHECKPOINT))
+    options_spelling, _ = _written(environment, options_key_variable(Section.CHECKPOINT))
     memory_option_variable = (
-        options_key_variable(Section.CHECKPOINT)
-        if settings.create_memory and checkpoint == _MEMORY_CHECKPOINT
-        else None
+        options_spelling if settings.create_memory and checkpoint == _MEMORY_CHECKPOINT else None
     )
     lines = [header.rstrip("\n"), "", "locals {"]
     lines += aligned(
@@ -193,6 +195,18 @@ def agentcore_settings_tf(plan: DeploymentPlan, header: str) -> str:
     lines += _environment_lines(plan)
     lines.append("}")
     return "\n".join(lines) + "\n"
+
+
+def _written(environment: Mapping[str, str], name: str) -> tuple[str, str | None]:
+    """Find ``name`` in the spelling the settings file used, the current one or the legacy one.
+
+    Returns:
+        The spelling found and its value, or the current spelling and ``None``.
+    """
+    for spelling in (name, legacy_spelling(name)):
+        if spelling in environment:
+            return spelling, environment[spelling]
+    return name, None
 
 
 def provider_key_variable(section: Section) -> str:

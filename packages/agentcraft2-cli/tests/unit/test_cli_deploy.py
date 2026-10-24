@@ -1052,3 +1052,33 @@ def test_the_written_agentcore_terraform_is_formatted_and_valid(
     terraform("fmt", "-check", "-recursive")
     terraform("init", "-backend=false", "-input=false")
     terraform("validate")
+
+
+def test_planning_agentcore_without_settings_suggests_the_agentcore_starter(
+    workspace: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert run("deploy", "helper", "--target", "agentcore", "--plan", "--workspace", workspace) == 1
+    err = capsys.readouterr().err
+    assert "agents/helper/deploy.env does not exist" in err
+    # Without the platform the command writes the Fargate starter, which has no AGENTCORE_ block.
+    assert "run 'agentcraft2 deploy helper --target agentcore' to write a starting one" in err
+
+
+def test_agentcore_memory_id_goes_to_the_spelling_the_settings_file_used(
+    agentcore_ready: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # A deploy.env written before the AC2_ prefix still works for a while. Terraform must
+    # rewrite the options variable the service will read, not a second spelling that
+    # would sit beside it with a different value and stop the service.
+    path = _settings(agentcore_ready)
+    path.write_text(
+        path.read_text(encoding="utf-8")
+        .replace("AC2_CHECKPOINT_PROVIDER", "EAP_CHECKPOINT_PROVIDER")
+        .replace("AC2_CHECKPOINT_OPTIONS", "EAP_CHECKPOINT_OPTIONS"),
+        encoding="utf-8",
+    )
+    assert _agentcore(agentcore_ready) == 0
+    capsys.readouterr()
+    settings = (agentcore_ready / "deploy/helper/settings.tf").read_text(encoding="utf-8")
+    assert '  memory_option_variable = "EAP_CHECKPOINT_OPTIONS"\n' in settings
+    assert "AC2_CHECKPOINT_OPTIONS" not in settings
