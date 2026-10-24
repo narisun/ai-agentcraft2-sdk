@@ -33,7 +33,9 @@ start with a document that has an unknown key, a wrong type, an unknown action
 or level, or two rules with one ID. OPA cannot refuse to start, so the bundle
 answers every request with a deny, reason `invalid_rules`, until the document
 is fixed. A misspelt key such as `role` for `roles` therefore never widens a
-rule, and neither does a bad value in a rule no request uses.
+rule, and neither does a bad value in a rule no request uses. A key that is
+present must hold a value: `roles:` left empty in YAML, or `roles: null`, would
+read as "any caller", so both are refused. Leave the key out to mean "any".
 
 `policies/testdata/rules_corpus.json` holds the cases both engines must judge
 alike: each invalid rule is tried first and last, used and unused, beside a

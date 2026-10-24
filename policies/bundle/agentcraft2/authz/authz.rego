@@ -116,7 +116,7 @@ list_keys := {"roles", "agents", "kinds", "applications"}
 
 actions := {
 	"model.route", "tool.call", "data.query", "agent.call",
-	"skill.activate", "memory.read", "memory.write",
+	"skill.activate", "memory.read", "memory.write", "diagnostic.read",
 }
 
 obligation_keys := {"row_filter", "mask_columns", "max_rows", "require_approval"}
@@ -145,27 +145,30 @@ valid_rule(rule) if {
 	every action in rule.actions {
 		action in actions
 	}
+	# A key that is present holds a value. `roles: null` would mean "any caller", the widest
+	# rule there is, and a key left empty in YAML reads as null: neither is accepted. Leave the
+	# key out for "any".
 	every key in object.keys(rule) & list_keys {
-		names_or_null(rule[key])
+		names(rule[key])
 	}
-	kinds_or_null(object.get(rule, "kinds", null))
+	every key in object.keys(rule) & {"kinds"} {
+		kinds(rule[key])
+	}
 	patterns(object.get(rule, "resources", ["*"]))
-	classification_or_null(object.get(rule, "max_classification", null))
+	every key in object.keys(rule) & {"max_classification"} {
+		classification(rule[key])
+	}
 	valid_obligations(object.get(rule, "obligations", {}))
 }
 
-kinds_or_null(value) if value == null
-
-kinds_or_null(value) if {
+kinds(value) if {
 	is_array(value)
 	every kind in value {
 		kind in {"user", "service"}
 	}
 }
 
-names_or_null(value) if value == null
-
-names_or_null(value) if {
+names(value) if {
 	is_array(value)
 	every name in value {
 		is_string(name)
@@ -183,9 +186,7 @@ patterns(value) if {
 	}
 }
 
-classification_or_null(value) if value == null
-
-classification_or_null(value) if value in object.keys(levels)
+classification(value) if value in object.keys(levels)
 
 valid_obligations(obligations) if {
 	is_object(obligations)
@@ -205,7 +206,9 @@ valid_obligations(obligations) if {
 		is_string(column)
 		count(column) > 0
 	}
-	whole_or_null(object.get(obligations, "max_rows", null))
+	every key in object.keys(obligations) & {"max_rows"} {
+		whole(obligations[key])
+	}
 	is_boolean(object.get(obligations, "require_approval", false))
 }
 
@@ -225,9 +228,7 @@ scalar(value) if is_number(value)
 
 scalar(value) if is_boolean(value)
 
-whole_or_null(value) if value == null
-
-whole_or_null(value) if {
+whole(value) if {
 	is_number(value)
 	value == floor(value)
 	value >= 0
