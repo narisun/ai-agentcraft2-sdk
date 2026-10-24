@@ -308,11 +308,36 @@ class GovernedToolsMiddleware:
             or not isinstance(arguments, Mapping)
         ):
             # A tool call reaches a tool only through the pipeline. One that is not
-            # well formed is refused here and never handed on.
+            # well formed is refused here and never handed on. It is logged, with nothing
+            # the caller sent: no tool name that is not shaped like one, no arguments.
+            _LOG.warning(
+                "tool_call",
+                extra={
+                    "tool": name if isinstance(name, str) and _TOOL_NAME.match(name) else _UNNAMED,
+                    "outcome": _INVALID,
+                    "reason": "not_well_formed",
+                },
+            )
             return _error("The call was refused: it is not a well-formed tool call.")
         evidence = Evidence()
+        try:
+            context = await self._request_context(ctx, evidence)
+        except AgentCraft2Error as error:
+            # A refusal (PolicyDenied) is handled inside and becomes a denied call. This is
+            # something under the identity check failing, such as an issuer that cannot be
+            # reached: the caller is told only the kind of failure, and the log says more.
+            _LOG.error(
+                "tool_call",
+                exc_info=error,
+                extra={
+                    "tool": name if _TOOL_NAME.match(name) else _UNNAMED,
+                    "outcome": _FAILED,
+                    "reason": "sign_in_failed",
+                },
+            )
+            return _error(f"The call failed ({type(error).__name__}).")
         call = ToolCall(
-            context=await self._request_context(ctx, evidence),
+            context=context,
             tool=name,
             arguments=arguments,
             server=self._server,

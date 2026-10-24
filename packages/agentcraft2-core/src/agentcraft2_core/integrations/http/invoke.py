@@ -145,13 +145,33 @@ class InvokeRoute:
         started = time.perf_counter()
         with capture_trace(context) as trace:
             reply = await self._answer(context, given)
+        try:
+            return await self._finished(context, reply, trace.link, started)
+        except Exception:  # noqa: BLE001 - a bug must become a reply and a log line
+            # The agent has run. What it returned could not be written as JSON, or the journal
+            # could not take it. Without this the framework answers with its own plain-text 500:
+            # no request ID for the caller, and no line in the log.
+            _LOG.exception(
+                "the reply could not be completed after the run",
+                extra={"request_id": context.request_id},
+            )
+            return error_reply(SERVER_ERROR, "internal", request_id=context.request_id).response()
+
+    async def _finished(
+        self,
+        context: RequestContext,
+        reply: Reply,
+        trace_link: dict[str, str] | None,
+        started: float,
+    ) -> Response:
+        """Complete the envelope, journal a terminal outcome, and serialise it once."""
         envelope: dict[str, object] = {
             **reply.body,
             "thread_id": context.thread_id,
             "request_id": context.request_id,
         }
-        if "error" in envelope and trace.link is not None:
-            envelope["trace"] = trace.link
+        if "error" in envelope and trace_link is not None:
+            envelope["trace"] = trace_link
         live = live_run(context)
         if live is not None:
             envelope.update(usage=live.usage().model_dump(), model_calls=live.model_calls)
@@ -169,7 +189,7 @@ class InvokeRoute:
                 "duration_ms": round(elapsed_ms),
             },
         )
-        if self._outcomes is None and live is None and trace.link is None:
+        if self._outcomes is None and live is None and trace_link is None:
             # A plain deployment answers with the bare envelope the run produced.
             return reply.response()
         return JSONResponse(envelope, status_code=reply.status, headers=reply.headers)

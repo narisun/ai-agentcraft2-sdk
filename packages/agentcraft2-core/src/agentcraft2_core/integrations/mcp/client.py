@@ -453,8 +453,10 @@ async def load_mcp_tools(
             ) from None
         if isinstance(error, MCPError | httpx2.HTTPError | OSError | TimeoutError):
             raise TransientError(
-                f"MCP server {server.id!r} could not be reached ({describe(error)})",
+                f"MCP server {server.id!r} could not be reached",
                 expected=f"an MCP server answering at {server.url}",
+                actual=type(error).__name__,
+                detail=describe(error),
                 fix=(
                     f"start it (in a workspace: agentcraft2 run {server.id}), or correct its "
                     "url in the tool registry"

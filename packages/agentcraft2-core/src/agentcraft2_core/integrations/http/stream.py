@@ -128,5 +128,9 @@ class StreamRoute:
 
 
 def _event(name: str, data: object) -> str:
-    """One server-sent event. JSON holds no raw line breaks, so one data line suffices."""
-    return f"event: {name}\ndata: {json.dumps(data, default=str)}\n\n"
+    """One server-sent event. JSON holds no raw line breaks, so one data line suffices.
+
+    ``allow_nan=False``: ``NaN`` is not JSON and a browser's ``JSON.parse`` rejects it. The
+    ValueError ends the run as an internal error, the way ``/invoke`` answers the same item.
+    """
+    return f"event: {name}\ndata: {json.dumps(data, default=str, allow_nan=False)}\n\n"

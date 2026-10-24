@@ -57,7 +57,7 @@ __all__ = [
 REQUEST_ID_HEADER = "x-request-id"
 SERVER_ERROR = 500
 _SAFE_ID = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
-_BEARER = re.compile(r"^[Bb]earer +(?P<token>[^\s]+)$")
+_BEARER = re.compile(r"^bearer +(?P<token>[^\s]+)$", re.IGNORECASE)
 _RETRY_AFTER_SECONDS = "1"
 _LOG = logging.getLogger(__name__)
 
@@ -163,8 +163,8 @@ def failure(error: AgentCraft2Error, request_id: str) -> Reply:
     return reply
 
 
-def _unauthorized(reason: str) -> JSONResponse:
-    response = error_response(401, "unauthorized", reason=reason)
+def _unauthorized(reason: str, request_id: str | None = None) -> JSONResponse:
+    response = error_response(401, "unauthorized", request_id=request_id, reason=reason)
     response.headers["www-authenticate"] = 'Bearer error="invalid_token"'
     return response
 
@@ -272,7 +272,9 @@ class RequestPrelude:
             payload = await _read_json(request, self._max_body_bytes)
         except _TooLargeError:
             return error_response(413, "too_large")
-        except (ValueError, ClientDisconnect):
+        except (ValueError, ClientDisconnect, RecursionError):
+            # RecursionError: a body nested deeper than the parser can follow, which anyone
+            # can send before signing in. It is a bad body like any other.
             return error_response(400, "invalid", detail="the body must be a JSON object")
         if not isinstance(payload, dict) or "input" not in payload:
             return error_response(
@@ -325,9 +327,9 @@ class RequestPrelude:
         """
         header = request.headers.get("authorization")
         bearer = _BEARER.match(header) if header is not None else None
-        if header is not None and bearer is None:
-            return _unauthorized("malformed_authorization")
         request_id = self._request_id(request)
+        if header is not None and bearer is None:
+            return _unauthorized("malformed_authorization", request_id)
         presented = PresentedCredentials(
             bearer=bearer["token"] if bearer is not None else None,
             headers=dict(request.headers),
@@ -345,7 +347,7 @@ class RequestPrelude:
                 exc_info=refusal,
                 extra={"request_id": request_id, "reason_code": refusal.reason_code},
             )
-            return _unauthorized(refusal.reason_code)
+            return _unauthorized(refusal.reason_code, request_id)
         except AgentCraft2Error as error:
             _LOG.error("the caller could not be signed in", exc_info=error)
             return failure(error, request_id or self._services.ids.new_id()).response()

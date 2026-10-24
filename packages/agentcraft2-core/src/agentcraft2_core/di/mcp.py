@@ -167,10 +167,23 @@ class McpBindings:
         return cast("McpConnector", connector)
 
     async def aclose(self) -> None:
-        """Close the connectors these bindings created; an injected one is left to its owner."""
+        """Close the connectors these bindings created; an injected one is left to its owner.
+
+        Every connector gets its turn: one that fails to close does not leave the others
+        open.
+
+        Raises:
+            ExceptionGroup: With the error of each connector that failed to close.
+        """
+        errors: list[Exception] = []
         for connector in self._owned.by_kind.values():
             if isinstance(connector, SupportsAsyncClose):
-                await connector.aclose()
+                try:
+                    await connector.aclose()
+                except Exception as error:  # noqa: BLE001 - every connector must get its turn
+                    errors.append(error)
+        if errors:
+            raise ExceptionGroup("errors while closing MCP connectors", errors)
 
     async def mcp_tools(self, server: str) -> list[BaseTool]:
         """Check discovery requirements and delegate governed tool construction.

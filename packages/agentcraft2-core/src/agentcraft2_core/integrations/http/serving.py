@@ -79,9 +79,16 @@ def _signals(stop: _Stop) -> Iterator[None]:
             previous[number] = before
         except (NotImplementedError, RuntimeError, ValueError):
             # No loop support (Windows) or not the main thread: fall back, or go without.
-            with contextlib.suppress(ValueError):
+            try:
                 previous[number] = signal.signal(
                     number, lambda *_, h=handler: loop.call_soon_threadsafe(h)
+                )
+            except ValueError as problem:
+                # Signals can be handled only in the main thread. Without a handler this
+                # signal ends the process at once, with no drain and no adapter cleanup.
+                _LOG.warning(
+                    "serving.signal_handler_not_installed",
+                    extra={"signal": number.name, "error_type": type(problem).__name__},
                 )
     try:
         yield
