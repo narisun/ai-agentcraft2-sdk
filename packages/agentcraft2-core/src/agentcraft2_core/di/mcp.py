@@ -350,10 +350,10 @@ class McpBindings:
         """Wrap an MCP server's ASGI app in the perimeter door its identity needs, if any.
 
         When the identity is a :class:`RequestVerifier` that trusts the
-        perimeter, a request to any path but the health routes that carries
-        neither an ``Authorization`` header nor every header the identity
-        requires (its ``required_headers``, when it has them) is refused with
-        HTTP 401. Otherwise the app is returned unchanged. The public contract
+        perimeter, a request to any path but the health routes that does not
+        carry every header the identity requires (its ``required_headers``) is
+        refused with HTTP 401, whatever else it carries and whatever the MCP
+        method. Otherwise the app is returned unchanged. The public contract
         is documented on ``ServiceContainer.mcp_door``.
         """
         if not self._trusts_perimeter():
@@ -361,6 +361,16 @@ class McpBindings:
         from agentcraft2_core.integrations.mcp import PerimeterDoor
 
         required: tuple[str, ...] = tuple(getattr(self.identity, "required_headers", ()))
+        if not required:
+            # A door that looks for nothing lets everything through: that is not a door.
+            raise ConfigurationError(
+                f"the identity provider {self.identity_provider!r} trusts the hosting platform's "
+                "perimeter but names no header the perimeter sets, so there is nothing for the "
+                "door to check",
+                expected="an identity with required_headers",
+                actual="none",
+                fix="name the header the platform sets for the caller in the identity options",
+            )
         return PerimeterDoor(app, required_headers=required)
 
     def _trusts_perimeter(self) -> bool:

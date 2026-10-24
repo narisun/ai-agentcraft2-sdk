@@ -301,8 +301,10 @@ perimeter-trusted identity from a verified token and, for instance, keep the
 most sensitive tools to the latter. A request without the header, and a bare
 bearer token with no headers, is refused with `perimeter_identity_missing`; a
 user ID that is not a usable identifier with `credential_invalid`. An MCP
-server on such a runtime admits a request with no token at its door when its
-identity trusts the perimeter and the runtime's headers are present.
+server on such a runtime admits a request at its door only when the runtime's
+headers are present, whatever the MCP method; a bearer token does not stand in
+for them, and a request that lacks them is answered with 401 before the server
+sees it.
 
 The provider cannot be selected in local development: there is no runtime to
 trust on a laptop, so a service whose deployment environment is `local`
