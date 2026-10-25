@@ -74,7 +74,5 @@ These settings are resolved by `load_phoenix_settings` separately from `ServiceC
 
 - `AC2_PHOENIX_ENABLED`
 - `AC2_PHOENIX_CAPTURE_CONTENT`
-- `AC2_PHOENIX_ENV_FILE`
 - `PHOENIX_COLLECTOR_ENDPOINT`
 - `PHOENIX_PROJECT_NAME`
-- `PHOENIX_API_KEY`

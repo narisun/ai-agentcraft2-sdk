@@ -9,12 +9,10 @@ from tools.local_config_report import report_environment
 from agentcraft2_core.config import ConfigResolver, LayeredConfigSource, MappingConfigSource
 
 
-@pytest.mark.parametrize("from_launcher", [False, True])
-def test_startup_uses_separate_tracing_file_and_child_working_directory(
+def test_startup_resolves_tracing_from_the_layers_and_notes_a_variable_it_no_longer_reads(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
-    from_launcher: bool,
 ) -> None:
     from tools.local_environment import agent_environment
 
@@ -24,36 +22,32 @@ def test_startup_uses_separate_tracing_file_and_child_working_directory(
     folder = tmp_path / "agent"
     folder.mkdir()
     service, launcher = folder / ".env", tmp_path / ".env"
-    trace_file = (tmp_path if from_launcher else folder) / "tracing.env"
     service.write_text(
         "AC2_PHOENIX_ENABLED=true\nAC2_PHOENIX_CAPTURE_CONTENT=false\n"
-        "PHOENIX_COLLECTOR_ENDPOINT=http://127.0.0.1:6006\n"
-        + ("" if from_launcher else "AC2_PHOENIX_ENV_FILE=tracing.env\n"),
+        "PHOENIX_COLLECTOR_ENDPOINT=http://127.0.0.1:6006\nPHOENIX_API_KEY=phoenix-private\n",
         encoding="utf-8",
     )
     launcher.write_text(
-        "AC2_PHOENIX_ENV_FILE=tracing.env\n" if from_launcher else "", encoding="utf-8"
-    )
-    trace_file.write_text(
         "AC2_PHOENIX_CAPTURE_CONTENT=true\nPHOENIX_COLLECTOR_ENDPOINT=http://127.0.0.1:6007\n"
-        "PHOENIX_API_KEY=phoenix-private\n",
+        "AC2_PHOENIX_ENV_FILE=tracing.env\n",
         encoding="utf-8",
     )
-    environment = agent_environment(service, launcher, required=True, working_dir=tmp_path)
-    resolved = resolve_phoenix_settings(
-        service, environment=MappingConfigSource(environment), working_dir=tmp_path
-    )
-    settings = resolved.settings
+    environment = agent_environment(service, launcher, required=True)
+    settings = resolve_phoenix_settings(
+        service, environment=MappingConfigSource(environment)
+    ).settings
     assert settings is not None
     assert settings.capture_content
     assert settings.base_url == "http://127.0.0.1:6007"
     output = capsys.readouterr().out
-    assert f'PHOENIX_COLLECTOR_ENDPOINT="http://127.0.0.1:6007"  [{trace_file}' in output
-    assert f'AC2_PHOENIX_CAPTURE_CONTENT="true"  [{trace_file}' in output
+    assert 'PHOENIX_COLLECTOR_ENDPOINT="http://127.0.0.1:6007"  [launcher .env' in output
+    assert 'AC2_PHOENIX_CAPTURE_CONTENT="true"  [launcher .env' in output
     assert "http://127.0.0.1:6006" not in next(
         line for line in output.splitlines() if "PHOENIX_COLLECTOR_ENDPOINT=" in line
     )
     assert "PHOENIX_API_KEY=********" in output
+    assert "note: PHOENIX_API_KEY is no longer used" in output
+    assert "note: AC2_PHOENIX_ENV_FILE is no longer read" in output
     assert "phoenix-private" not in output
 
 
@@ -218,12 +212,11 @@ def test_both_spellings_of_the_tracing_controls_are_shown_not_masked(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     show(
-        {"AC2_PHOENIX_ENV_FILE": "shell.env", "EAP_PHOENIX_CAPTURE_CONTENT": "true"},
+        {"EAP_PHOENIX_CAPTURE_CONTENT": "true"},
         {"AC2_PHOENIX_ENABLED": "true"},
         {"EAP_PHOENIX_ENABLED": "true", "AC2_PHOENIX_CAPTURE_CONTENT": "false"},
     )
     output = capsys.readouterr().out
-    assert 'AC2_PHOENIX_ENV_FILE="shell.env"  [shell]' in output
     assert 'EAP_PHOENIX_CAPTURE_CONTENT="true"  [shell]' in output
     assert 'AC2_PHOENIX_ENABLED="true"  [launcher .env]' in output
     assert 'EAP_PHOENIX_ENABLED="true"  [service .env]' in output
@@ -278,20 +271,15 @@ def test_legacy_tracing_names_resolve_and_report_under_the_canonical_name(
     folder.mkdir()
     service, launcher = folder / ".env", tmp_path / ".env"
     service.write_text(
-        "EAP_PHOENIX_ENABLED=true\nEAP_PHOENIX_ENV_FILE=tracing.env\n", encoding="utf-8"
-    )
-    launcher.write_text("", encoding="utf-8")
-    trace_file = folder / "tracing.env"
-    trace_file.write_text(
-        "EAP_PHOENIX_CAPTURE_CONTENT=true\nPHOENIX_COLLECTOR_ENDPOINT=http://127.0.0.1:6007\n",
+        "EAP_PHOENIX_ENABLED=true\nEAP_PHOENIX_CAPTURE_CONTENT=true\n"
+        "PHOENIX_COLLECTOR_ENDPOINT=http://127.0.0.1:6007\n",
         encoding="utf-8",
     )
-    environment = agent_environment(service, launcher, required=True, working_dir=tmp_path)
-    resolved = resolve_phoenix_settings(
-        service, environment=MappingConfigSource(environment), working_dir=tmp_path
-    )
+    launcher.write_text("", encoding="utf-8")
+    environment = agent_environment(service, launcher, required=True)
+    resolved = resolve_phoenix_settings(service, environment=MappingConfigSource(environment))
     assert resolved.settings is not None
     assert resolved.settings.capture_content
     output = capsys.readouterr().out
-    assert f'AC2_PHOENIX_CAPTURE_CONTENT="true"  [{trace_file}' in output
-    assert f'PHOENIX_COLLECTOR_ENDPOINT="http://127.0.0.1:6007"  [{trace_file}' in output
+    assert f'AC2_PHOENIX_CAPTURE_CONTENT="true"  [{service.resolve()}' in output
+    assert f'PHOENIX_COLLECTOR_ENDPOINT="http://127.0.0.1:6007"  [{service.resolve()}' in output

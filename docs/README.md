@@ -14,7 +14,7 @@ source.
 | Connect an existing agent to the simulator | [Agent Lab setup](../packages/agentcraft2-ui/README.md#1-prepare-the-ui-packages) | Register an HTTP agent, start the UI, and resume saved chats |
 | Find a configuration variable | [Searchable configuration table](developer-guide.html#variables) | See its purpose, local/AWS values, and provider options |
 | Inspect model context and tool use | [Tracing and ReAct walkthrough](developer-guide.html#model-debugging) | Read model input/output and checkpoint history |
-| Trace agent runs with Phoenix | [Trace agents with Phoenix](phoenix-trial.md) | Turn tracing on with one setting, run Phoenix locally or send traces to a team-hosted server, and follow Agent Lab's trace links |
+| Trace agent runs with Phoenix | [Trace agents with Phoenix](phoenix-trial.md) | Turn tracing on with one setting, run Phoenix on your machine, and follow Agent Lab's trace links |
 | Learn by tracing a real run | [Verified Anthropic run](verified-anthropic-run.md), then [Ask Anthropic two questions](anthropic-example.md) | Read captured model input and checkpoints first, then reproduce them with your own key and model |
 | Measure an agent offline and online | [Evals guide](evals.md) | Run generated evals, accept a baseline, capture feedback, and score sampled production answers |
 | Understand who is calling | [Identity guide](identity.md) | Follow a signed token from sign-in through the agent and MCP server to policy, and learn why a call was refused |

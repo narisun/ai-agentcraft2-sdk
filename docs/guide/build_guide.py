@@ -262,33 +262,22 @@ def _phoenix_variable_rows() -> list[list[str]]:
         (
             "Enable Phoenix tracing; start-local.bat also starts the local server.",
             "false; true to trace locally",
-            "false until a Phoenix server is available",
+            "false: a deployed service refuses to start with tracing on",
         ),
         (
             "Capture model and tool input/output.",
             "false; true for approved test data",
-            "false unless approved",
+            "false",
         ),
         (
-            "Optional private agent tracing settings file.",
-            "Unset; use the root .env or an absolute file path",
-            "Unset; inject task environment settings",
-        ),
-        (
-            "Phoenix HTTP origin, without /v1/traces.",
-            "http://127.0.0.1:6006",
-            "Team-managed authenticated HTTPS origin",
+            "Phoenix HTTP origin on this machine, without /v1/traces.",
+            "http://127.0.0.1:6006; set it only to use another local port",
+            "Not used",
         ),
         (
             "Project for this agent's traces.",
-            "agent-lab; rmprep-trial in the walkthrough",
-            "Team project",
-        ),
-        (
-            "Optional API key; never included in trace links.",
-            "Unset for the local server",
-            "Process environment (on Fargate, an ECS task-definition secret); "
-            "not the secrets provider",
+            "The service's name; rmprep-trial in the walkthrough",
+            "Not used",
         ),
     )
     return [
@@ -297,13 +286,12 @@ def _phoenix_variable_rows() -> list[list[str]]:
             _e(purpose),
             _e(local),
             _e(aws),
-            "Process settings override the separate tracing file, then the service .env. "
+            "Process settings override the service .env. "
             "Nothing is exported until tracing is enabled. A local Phoenix stores traces "
-            "in SQLite and runs in its own Python environment. A team-hosted Phoenix is "
-            "supported over HTTPS; your platform team runs it. "
-            '<a href="phoenix-trial.md">Trace agents with Phoenix</a>, including the '
-            '<a href="phoenix-trial.md#send-traces-to-a-team-hosted-phoenix">team-hosted '
-            "setup</a>.",
+            "in SQLite and runs in its own Python environment; traces are never sent to "
+            "another host and no key is used. "
+            '<a href="phoenix-trial.md">Trace agents with Phoenix</a>, including '
+            '<a href="phoenix-trial.md#traces-stay-on-your-machine">where traces go</a>.',
         ]
         for name, (purpose, local, aws) in zip(PHOENIX_VARIABLES, settings, strict=True)
     ]

@@ -440,7 +440,7 @@ async def test_an_envelope_trace_link_is_kept_over_the_console_link() -> None:
     trace = {
         "provider": "phoenix",
         "trace_id": "1234567890abcdef1234567890abcdef",
-        "url": "https://traces.example/redirects/traces/1234567890abcdef1234567890abcdef",
+        "url": "http://127.0.0.1:6006/redirects/traces/1234567890abcdef1234567890abcdef",
     }
     body = envelope(LONG_THREAD)
     body["output"]["trace"] = trace

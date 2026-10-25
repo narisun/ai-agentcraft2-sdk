@@ -101,23 +101,15 @@ def service(root: Path) -> Service:
 
 
 def configured_service(
-    root: Path, service_env: Path, environment: Mapping[str, str], *, agent_cwd: Path
+    root: Path, service_env: Path, environment: Mapping[str, str]
 ) -> Service | None:
     """Start the local trial only when the agent's effective settings select it."""
     from agentcraft2_core.config import MappingConfigSource
-    from agentcraft2_core.config.bindings import legacy_spelling
-    from agentcraft2_core.config.phoenix import PHOENIX_LABELS, load_phoenix_settings
+    from agentcraft2_core.config.phoenix import load_phoenix_settings
     from agentcraft2_core.contracts import ConfigurationError
 
-    # Environment-file paths in shell/root overrides use the agent's working
-    # directory, just as they do when the child resolves its own settings. Either
-    # spelling may carry one; when both do, the loader judges whether they agree.
-    settings_env = dict(environment)
-    for name in (PHOENIX_LABELS["env_file"], legacy_spelling(PHOENIX_LABELS["env_file"])):
-        if extra := settings_env.get(name):
-            settings_env[name] = str((agent_cwd / extra).resolve())
     try:
-        settings = load_phoenix_settings(service_env, environment=MappingConfigSource(settings_env))
+        settings = load_phoenix_settings(service_env, environment=MappingConfigSource(environment))
     except ConfigurationError as error:
         raise ValueError(str(error)) from error
     if settings is None:

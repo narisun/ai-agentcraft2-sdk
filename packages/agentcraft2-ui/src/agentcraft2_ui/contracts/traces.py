@@ -57,15 +57,17 @@ class TraceLink(DiagnosticValue):
         return self
 
     def _trace_route(self, parts: SplitResult) -> bool:
-        """The private Phoenix redirect route for this trace id, over HTTPS or loopback HTTP."""
+        """The Phoenix redirect route for this trace id, on this machine over plain HTTP.
+
+        Phoenix is a tool for the developer's machine, so a link to any other host is not
+        a trace link and is never rendered.
+        """
         return (
             not parts.query
             and not parts.fragment
             and re.fullmatch(r"/redirects/traces/" + self.trace_id, parts.path) is not None
-            and (
-                parts.scheme == "https"
-                or (parts.scheme == "http" and parts.hostname in {"localhost", "127.0.0.1", "::1"})
-            )
+            and parts.scheme == "http"
+            and parts.hostname in {"localhost", "127.0.0.1", "::1"}
         )
 
     @staticmethod

@@ -36,7 +36,8 @@ async def test_generated_agent_traces_tool_and_same_thread_followup(
     instructions = (folder / "docs/tracing.md").read_text()
     assert all(variable in config_text for variable in PHOENIX_VARIABLES)
     assert all(variable in instructions for variable in PHOENIX_VARIABLES)
-    assert f"{PHOENIX_LABELS['project']}={name}" in instructions
+    assert f"`{PHOENIX_LABELS['project']}` | The Phoenix project that groups" in instructions
+    assert f"| `{name}` |" in instructions
     assert f'"%PYTHON%" -m {package}.service' in instructions
     assert "Python and pip" in instructions
     assert "PowerShell" not in instructions

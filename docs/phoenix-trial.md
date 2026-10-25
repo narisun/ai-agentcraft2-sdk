@@ -4,14 +4,10 @@ Phoenix gives Agent Lab a timeline of each agent response: model messages, MCP
 calls, token usage, duration, and links back to checkpoint IDs. It is the only
 agent-tracing backend the library ships, and it stays off until you enable it.
 
-You choose where the Phoenix server lives:
-
-- **Local, the default.** A Phoenix server on your own machine, started by this
-  repository's launchers, with traces in one SQLite file. It needs no account,
-  and nothing leaves the machine. Steps 1 to 4 below set it up.
-- **Team-hosted.** Your agent exports to a Phoenix that your platform team
-  runs, over HTTPS. See [Send traces to a team-hosted
-  Phoenix](#send-traces-to-a-team-hosted-phoenix).
+Phoenix runs on your own machine, started by this repository's launchers, with
+traces in one SQLite file. It needs no account and no key, and nothing leaves the
+machine: [traces stay on your machine](#traces-stay-on-your-machine). Steps 1 to 4
+below set it up.
 
 For the complete first-run path, use [local startup and testing](local-startup.md).
 This page explains Phoenix settings, trace inspection, privacy, and captured
@@ -44,11 +40,10 @@ AC2_PHOENIX_ENABLED=true
 ```
 
 That is the whole integration. With nothing else set, the agent exports to
-`http://127.0.0.1:6006` under the project name `agent-lab`, so a Phoenix server
-must be listening there: start the local one (steps 1 to 4 below) or set
-`PHOENIX_COLLECTOR_ENDPOINT` to a team-hosted one. **Content capture stays
-off**: traces carry metadata, token counts, and checkpoint IDs, not conversation
-text. Set `PHOENIX_PROJECT_NAME` to group one agent's traces, and
+`http://127.0.0.1:6006` under a project named for the service, so a Phoenix server
+must be listening there: start the local one (steps 1 to 4 below). **Content capture
+stays off**: traces carry metadata, token counts, and checkpoint IDs, not
+conversation text. Set `PHOENIX_PROJECT_NAME` to group several agents' traces, and
 `AC2_PHOENIX_CAPTURE_CONTENT=true` only with approved test data (see [Privacy and
 content capture](#privacy-and-content-capture)). Restart after changing a
 setting. Tracing covers `POST /invoke`, including Agent Lab's live response
@@ -60,7 +55,7 @@ start with its name filled in. A service that composes by hand follows
 [Compose tracing by hand](#compose-tracing-by-hand) instead.
 
 The rest of this page sets up the local server (steps 1 to 4), lists every
-setting, and covers the team-hosted option, privacy, hand composition, and
+setting, and covers where traces go, privacy, hand composition, and
 troubleshooting.
 
 ## 1. Install the Phoenix packages
@@ -138,12 +133,11 @@ Service log files use UTF-8, including first-run database messages on Windows.
 `start-local.bat services` also includes Phoenix when enabled. UI-only and scripted
 demo runs keep their existing scope. Variables set in the terminal override the root
 file; `--env-file` selects a different file instead of the root `.env`.
-The launcher uses the same effective Phoenix settings as the agent, including an
-optional separate tracing settings file.
+The launcher uses the same effective Phoenix settings as the agent.
 
 Automatic startup applies to `http://127.0.0.1:6006` and
-`http://localhost:6006`. Other endpoints are managed separately: the launcher
-prints that choice and connects the agent without starting a local Phoenix server.
+`http://localhost:6006`. Another local port is yours to run: the launcher prints
+that choice and connects the agent without starting a Phoenix server.
 For a readiness check that stops everything afterward, run:
 
 ```bat
@@ -323,74 +317,55 @@ to run this scenario with your own saved memo reference.
 ## Settings
 
 From your agent workspace, run `python -m agentcraft2_cli config explain rmprep`
-to see effective Phoenix settings and their source files, with API keys masked.
-Run `python -m agentcraft2_cli doctor rmprep` to validate them before startup.
-These tracing checks do not contact Phoenix. Startup, `doctor`, `config explain`,
-and the launcher's summary all resolve the settings through the same function,
-`resolve_phoenix_settings`, so a check shows what startup will use, including a
-separate `AC2_PHOENIX_ENV_FILE` when one is configured.
+to see effective Phoenix settings and where each came from. Run `python -m
+agentcraft2_cli doctor rmprep` to validate them before startup. These tracing checks
+do not contact Phoenix. Startup, `doctor`, `config explain`, and the launcher's
+summary all resolve the settings through the same function,
+`resolve_phoenix_settings`, so a check shows what startup will use.
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
 | `AC2_PHOENIX_ENABLED` | Enable tracing; `start-local.bat` also starts the local server | `false` |
 | `AC2_PHOENIX_CAPTURE_CONTENT` | Include model and tool input/output | `false` |
-| `AC2_PHOENIX_ENV_FILE` | Optional separate agent tracing settings file | Unset |
-| `PHOENIX_COLLECTOR_ENDPOINT` | HTTP loopback or HTTPS origin, without `/v1/traces` | `http://127.0.0.1:6006` |
-| `PHOENIX_PROJECT_NAME` | Project for this agent's spans: 1 to 128 letters, digits, `_` or `-` | `agent-lab` |
-| `PHOENIX_API_KEY` | Optional key for an authenticated Phoenix server, sent as a bearer token | Empty for the local server; masked in startup output |
+| `PHOENIX_COLLECTOR_ENDPOINT` | `http` origin on this machine (`localhost`, `127.0.0.1` or `[::1]`), without `/v1/traces`; set it only to use another local port | `http://127.0.0.1:6006` |
+| `PHOENIX_PROJECT_NAME` | Project for this agent's spans: 1 to 128 letters, digits, `_` or `-` | The service's name |
 
-Agent settings resolve in this order: process environment, separate tracing file,
-then service `.env`. A separate file path in service `.env` is relative to that
-file. Use an absolute path when setting it in the root `.env` or the process
-environment. Setting `AC2_PHOENIX_ENABLED=false` in the process environment also
-bypasses a separate tracing file. The Phoenix server uses its own fixed local
-settings and does not load agent credentials.
+Agent settings resolve in this order: process environment, then service `.env`. The
+Phoenix server uses its own fixed local settings and does not load agent credentials.
 
 These variables are read by Phoenix's own loader, not by the configuration
-binding table. The validator accepts the three settings that start with `AC2_`
+binding table. The validator accepts the two settings that start with `AC2_`
 (and, for one minor release, their old `EAP_` spellings, with a warning);
 the `PHOENIX_*` names are the vendor's own and are not checked for typos. [ADR
-0004](adr/0004-tracing-configuration.md) records registering all six in the
-binding table as future work.
+0004](adr/0004-tracing-configuration.md) records registering all four in the
+binding table as future work. `PHOENIX_API_KEY` and `AC2_PHOENIX_ENV_FILE` are not
+settings any more: see [traces stay on your machine](#traces-stay-on-your-machine).
 
-## Send traces to a team-hosted Phoenix
+## Traces stay on your machine
 
-Phoenix is local-first and remote-capable. The local server above is the default.
-For a shared deployment, point the agent at a Phoenix server that your platform
-team runs. This repository does not deploy or operate one: your platform team owns
-its hosting, authentication, storage, backups, and retention.
+Phoenix is a tool for the machine you develop on. Nothing in the library can send a
+trace to another host, and nothing carries a credential for one:
 
-On the agent side, set:
+- **No key.** The local Phoenix takes no login and no key, so the agent sends none.
+  `PHOENIX_API_KEY` is not read. A leftover value is ignored, and `doctor`, `config
+  explain` and startup say so, without showing the value.
+- **Local address only.** `PHOENIX_COLLECTOR_ENDPOINT` is for choosing another port on
+  this machine. It must be `http` on `localhost`, `127.0.0.1` or `[::1]`; any other
+  address stops startup with a message that names the setting and not the address.
+- **No separate settings file.** `AC2_PHOENIX_ENV_FILE` existed to keep a key in a
+  private file. It is no longer read; a value left in a file earns the same message.
+- **Not on a server.** A service whose deployment environment is `dev` or `prod`
+  refuses to start with tracing on, and `doctor` fails the same check. A deployed
+  service reports through its telemetry setting, with its own collector, not through
+  Phoenix.
+- **Agent Lab links.** Agent Lab shows an **Open trace in Agent Lab** link only for
+  `http://localhost`, `http://127.0.0.1` or `http://[::1]`, and drops any other link.
 
-```dotenv
-AC2_PHOENIX_ENABLED=true
-PHOENIX_COLLECTOR_ENDPOINT=https://phoenix.your-company.example
-PHOENIX_PROJECT_NAME=your-agent
-```
+In a container the agent cannot reach a Phoenix on the host, because the host is not
+loopback to it. Run the agent and Phoenix on the same machine for tracing.
 
-- `PHOENIX_COLLECTOR_ENDPOINT` is the collector's origin, without `/v1/traces`.
-  Startup rejects plain HTTP unless the host is loopback, and rejects a path,
-  query, or embedded credentials.
-- Add `PHOENIX_API_KEY` when the server requires one. The agent sends it as a
-  bearer token. Startup output, `config explain`, and trace links never show it.
-- Export is asynchronous and best effort. A collector outage never retries a
-  business request or discards an accepted answer.
-- Agent Lab's **Open trace in Agent Lab** link opens
-  `<endpoint>/redirects/traces/<trace-id>`, so readers' browsers must reach that
-  origin and sign in to Phoenix themselves. Agent Lab accepts HTTPS links for
-  this, and plain HTTP only for loopback.
-
-**Where the API key lives.** `PHOENIX_API_KEY` is read from the process
-environment (or the separate tracing file, or the service `.env`), like every
-Phoenix setting. It does not go through the secrets provider, so
-`AC2_SECRETS_PROVIDER` does not apply to it. On AWS Fargate, define it as a
-secret in the ECS task definition so the platform injects it into the container's
-environment as `PHOENIX_API_KEY`; keep it out of the image, the repository, and
-any committed `.env`.
-
-Decide capture before you point real traffic at a shared server. A shared Phoenix
-stores whatever the agent sends, for everyone who can open that project; see the
-next section.
+Export is asynchronous and best effort. A collector outage never retries a business
+request or discards an accepted answer.
 
 ## Privacy and content capture
 
@@ -404,7 +379,7 @@ you turn it on.
 
 Even with capture off, request and thread IDs and checkpoint references identify
 conversations, so plan access and retention for the Phoenix server. The browser
-receives only a private trace URL; the API key stays in the agent process.
+receives only a link to the trace on your machine.
 
 The rule for any file or server holding model traces, and for files derived from
 real conversations such as feedback logs and exported interactions:
@@ -501,7 +476,9 @@ agents keep their own model dependencies and can still send traces to Phoenix.
 | Port 6006 is in use | Stop a standalone Phoenix window before starting the combined stack. The launcher fails before starting services and leaves the existing process alone. |
 | Repeated connection errors on port 4318 | Set `AC2_TELEMETRY=off` for this local setup, or configure your separate operational collector. Restart the stack. |
 | Startup says tracing needs `agentcraft2-core[otel]` | Install the extra with pip, as shown in [Compose tracing by hand](#compose-tracing-by-hand), then restart. |
-| Startup rejects `PHOENIX_COLLECTOR_ENDPOINT` | Use an HTTPS origin, or HTTP for loopback only, with no path, query, or credentials. |
+| Startup rejects `PHOENIX_COLLECTOR_ENDPOINT` | Use `http://localhost`, `http://127.0.0.1` or `http://[::1]` with an optional port, and no path, query, or credentials. Traces are never sent to another host. |
+| A note says `PHOENIX_API_KEY` is no longer used, or `AC2_PHOENIX_ENV_FILE` is no longer read | Delete the line. The local Phoenix needs no key, and settings come from the process environment and the service `.env`. |
+| Startup says Phoenix tracing is a tool for a developer's machine | The service runs with a deployment environment of `dev` or `prod`. Set `AC2_PHOENIX_ENABLED=false`; a deployed service uses its telemetry setting. |
 | Startup fails with `unknown configuration variable` naming a Langfuse setting | Langfuse support was removed. Delete those lines from the `.env`, or unset the variables in the process environment; see [Since the October review](release-scope.md#since-the-october-review). |
 | No trace link | Check `AC2_PHOENIX_ENABLED` in the agent startup output and restart after changing settings. |
 | Link opens before a trace appears | Allow a few seconds, then reload. Check the agent log for exporter connection errors. |

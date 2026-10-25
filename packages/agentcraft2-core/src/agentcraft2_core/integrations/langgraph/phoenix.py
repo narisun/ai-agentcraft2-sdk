@@ -8,16 +8,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from agentcraft2_core.config.phoenix import (
-    PHOENIX_LABELS,
     PhoenixSettings,
     load_phoenix_settings,
+    require_local_tracing,
 )
-from agentcraft2_core.contracts import (
-    ConfigurationError,
-    DeploymentEnv,
-    ModelTraceSink,
-    ServiceConfig,
-)
+from agentcraft2_core.contracts import ModelTraceSink, ServiceConfig
 from agentcraft2_core.integrations.langgraph._agent_tracing import (
     AgentTracing,
     local_model_trace,
@@ -47,10 +42,9 @@ class PhoenixTracing(AgentTracing):
         checkpoint_timeout_seconds: float = 1.0,
     ) -> None:
         if exporter is None:
+            # The local Phoenix takes no key, so no credential is ever attached to a request.
             exporter = otlp_exporter(
-                settings.base_url.rstrip("/") + "/v1/traces",
-                headers={"Authorization": "Bearer " + settings.api_key} if settings.api_key else {},
-                backend="Phoenix",
+                settings.base_url.rstrip("/") + "/v1/traces", headers={}, backend="Phoenix"
             )
         super().__init__(
             settings,
@@ -58,7 +52,7 @@ class PhoenixTracing(AgentTracing):
             exporter=exporter,
             provider_name="phoenix",
             schema=PhoenixSchema(),
-            resource_attributes={"openinference.project.name": settings.project_name},
+            resource_attributes={"openinference.project.name": settings.project_for(application)},
             local_sink=local_sink,
             checkpoint_timeout_seconds=checkpoint_timeout_seconds,
         )
@@ -81,19 +75,7 @@ async def phoenix_tracing(
     ``local_sink`` replaces the JSONL model trace ``config`` names.
     """
     settings = settings or load_phoenix_settings(dotenv_path)
-    if (
-        settings is not None
-        and settings.capture_content
-        and config.deployment_env is DeploymentEnv.PROD
-    ):
-        raise ConfigurationError(
-            "Phoenix is set to capture conversation content, and a production service "
-            "does not send it",
-            expected="content capture off when the deployment environment is prod",
-            actual="on",
-            fix=f"set {PHOENIX_LABELS['capture_content']}=false; trace a dev deployment "
-            "with test data",
-        )
+    require_local_tracing(settings, config.deployment_env)
     tracing = (
         PhoenixTracing(
             settings,
