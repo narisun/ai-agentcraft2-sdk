@@ -14,7 +14,13 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Annotated, Literal
 
-from pydantic import BeforeValidator, Field, StringConstraints, ValidationError
+from pydantic import (
+    BeforeValidator,
+    Field,
+    StringConstraints,
+    ValidationError,
+    model_validator,
+)
 
 from agentcraft2_core.contracts import (
     Classification,
@@ -106,6 +112,9 @@ def parse_obligations(raw: object) -> Obligations:
         raise ValueError(str(exc)) from None
 
 
+_OPTIONAL_KEYS = ("roles", "agents", "kinds", "applications", "max_classification")
+
+
 class _RuleModel(OptionsModel):
     id: _RuleId
     actions: list[PolicyAction] = Field(min_length=1)
@@ -116,6 +125,23 @@ class _RuleModel(OptionsModel):
     resources: list[_Pattern] = Field(default_factory=lambda: ["*"], min_length=1)
     max_classification: _ClassificationName | None = None
     obligations: dict[str, object] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _no_key_without_a_value(cls, data: object) -> object:
+        """Refuse a key that is present and empty, which would read as "any".
+
+        A rule without ``roles`` covers any caller. ``roles:`` left empty in YAML, or
+        ``roles: null``, says the same thing by accident, and the widest rule there is
+        should never be one. The key is left out to mean "any".
+        """
+        if isinstance(data, Mapping):
+            for key in _OPTIONAL_KEYS:
+                if key in data and data[key] is None:
+                    raise ValueError(
+                        f"valid because {key} has no value (give it one, or leave the key out)"
+                    )
+        return data
 
 
 class _RulesDocument(OptionsModel):
@@ -277,6 +303,11 @@ def parse_rules_document(raw: object, *, what: str = "policy rules") -> tuple[Ru
         )
     rules = []
     for rule in document.rules:
+        if "max_rows" in rule.obligations and rule.obligations["max_rows"] is None:
+            raise ConfigurationError(
+                f"{what}: rule {rule.id!r}: max_rows has no value: give a whole number, "
+                "or leave the key out"
+            ) from None
         try:
             obligations = parse_obligations(rule.obligations)
         except ValueError as exc:

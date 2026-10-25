@@ -587,9 +587,10 @@ class ServiceContainer:
         """Return the MCP server's ASGI app behind the door its identity provider needs.
 
         When the identity provider trusts the hosting platform's perimeter
-        instead of checking a token at the door, a request that carries
-        neither a bearer token nor the headers the perimeter sets is refused
-        with HTTP 401 before it reaches the server; health routes stay open.
+        instead of checking a token at the door, a request that lacks the
+        headers the perimeter sets is refused with HTTP 401 before it reaches
+        the server, whatever it carries and whatever the MCP method; health
+        routes stay open.
         With any other identity provider the app is returned unchanged, so an
         entry point can always wrap its app.
         """
