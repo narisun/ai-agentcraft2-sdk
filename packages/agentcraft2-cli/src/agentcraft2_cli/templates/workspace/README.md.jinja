@@ -8,6 +8,23 @@ Run the commands below from **this workspace's root folder**, where
 Installing packages requires access to your approved package index or a
 folder of Python wheels. The default tests use scripted models and local fixtures.
 
+## The commands you will use
+
+`ac2` is the short name of `agentcraft2`, installed with the CLI. Where your Python's
+scripts folder is not on `PATH`, `python -m agentcraft2_cli` takes its place. Each command
+has `--help` with examples.
+
+| Command | What it does |
+| --- | --- |
+| `ac2 new agent <name>` | Add an agent with its tests (`--mcp <server>` to let it call a server's tools). |
+| `ac2 new mcp <name>` | Add an MCP server over sample data, or your own with `--from-csv`. |
+| `ac2 install` | Install every service and its dependencies. |
+| `ac2 doctor` | Verify the configuration of everything; each failure says what to fix. |
+| `ac2 run <service>` | Start a service. A failure to start shows the exact message and stack trace. |
+| `ac2 logs [service]` | Read what a service wrote while it ran. |
+| `ac2 errors [service]` | List what failed, with the stack traces. |
+| `ac2 check` | Lint, format, types, tests and the policy samples: what CI runs. |
+
 ## Select Python
 
 Use your team's approved Python and pip for this workspace's agents and MCP servers.

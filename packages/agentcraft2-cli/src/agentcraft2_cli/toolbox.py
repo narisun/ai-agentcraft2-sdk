@@ -8,6 +8,7 @@ the real ones are the defaults, and a test passes its own.
 
 from __future__ import annotations
 
+import importlib.util
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -38,11 +39,25 @@ Returns ``None`` when there is nobody to ask, so the default stands.
 """
 
 
+def is_importable(package: str) -> bool:
+    """Whether this Python can import ``package``: whether it is installed."""
+    try:
+        return importlib.util.find_spec(package) is not None
+    except (ImportError, ValueError):
+        return False
+
+
 def terminal_prompt(question: str, default: str) -> str | None:
     """Ask at the terminal, if the command is running at one."""
     if not sys.stdin.isatty():
         return None
-    return str(click.prompt(question, default=default))
+    try:
+        return str(click.prompt(question, default=default))
+    except click.Abort as stopped:
+        # Nobody to answer (the input ended): the default stands. Ctrl+C still stops.
+        if isinstance(stopped.__context__, EOFError):
+            return None
+        raise
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,6 +74,7 @@ class Toolbox:
         fetch_catalog: Reads tables and columns from the Redshift catalogue.
         opa_server: Starts a local OPA.
         prompt: Asks a person a question.
+        is_installed: Says whether a package can be imported by this Python.
     """
 
     renderer: TemplateRenderer = field(default_factory=TemplateRenderer)
@@ -70,6 +86,7 @@ class Toolbox:
     fetch_catalog: CatalogReader = fetch_catalog
     opa_server: OpaStarter = opa_server
     prompt: Prompt = terminal_prompt
+    is_installed: Callable[[str], bool] = is_importable
 
     def scaffolder(self) -> Scaffolder:
         """Return what creates workspaces and adds services, built from these tools."""

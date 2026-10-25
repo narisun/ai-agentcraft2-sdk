@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 import tomllib
 from pathlib import Path
 
@@ -60,8 +61,29 @@ def install(tools: Toolbox, no_dev: bool, workspace: Path | None) -> None:
     """Install every workspace service and its dependencies with Python's pip.
 
     Use the Python selected for this workspace. Run again after adding a service
-    or changing its pyproject.toml. Pip uses that Python's configured package location.
+    or changing its pyproject.toml. Pip uses that Python's configured package location,
+    so a corporate index or proxy set in pip's own configuration applies.
+
+    \b
+    Examples:
+      ac2 install               every service, with the development tools (pytest, ruff)
+      ac2 install --no-dev      only what runs the services
     """
     root = workspace_root(workspace)
     if tools.run_tool("pip", installation_arguments(root, dev=not no_dev), root) != 0:
-        raise CliError("pip could not install the workspace", fix="read pip's output above")
+        raise CliError(
+            "pip could not install the workspace",
+            fix=(
+                "read pip's output above"
+                + (
+                    "; if it says a file 'is being used by another process', this command's own "
+                    f"launcher is locked while it runs: use '{_python_m()} install' instead"
+                    if sys.platform == "win32"
+                    else ""
+                )
+            ),
+        )
+
+
+def _python_m() -> str:
+    return "python -m agentcraft2_cli"

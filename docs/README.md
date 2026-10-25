@@ -9,6 +9,7 @@ source.
 | Task | Read | Expected result |
 | --- | --- | --- |
 | Test the included business agent | [Local startup and testing](local-startup.md) | Set the root `.env`, start the stack, test memos and same-thread follow-ups, inspect traces, and stop safely |
+| Use the command line | [The `ac2` command line](cli.md) | Scaffold a workspace, add agents, verify the configuration, run services, read their logs and list their errors with stack traces |
 | Build a new agent | [Getting started](getting-started.md) | Create the `tutorial` workspace, add a tool, and test permissions and behavior |
 | Learn the architecture | [Developer guide](developer-guide.html#principles) | Understand interfaces, dependency injection, providers, and the LangGraph boundary |
 | Connect an existing agent to the simulator | [Agent Lab setup](../packages/agentcraft2-ui/README.md#1-prepare-the-ui-packages) | Register an HTTP agent, start the UI, and resume saved chats |

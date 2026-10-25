@@ -21,6 +21,7 @@ from agentcraft2_cli.deploy.agentcore import (
 )
 from agentcraft2_cli.deploy.plan import depends_on_aws
 from agentcraft2_cli.deploy.target import AGENTCORE, AWS_DISTRIBUTION, Target
+from agentcraft2_cli.errors import invocation
 from agentcraft2_cli.render import Report, write_files
 from agentcraft2_core.config import EnvSetting, Key, options_key, provider_key, render_env_file
 from agentcraft2_core.contracts import Profile, Section
@@ -250,7 +251,7 @@ def next_steps(root: Path, target: Target) -> list[str]:
             extras = "[bedrock,postgres]"
         steps.append(
             f'add "{AWS_DISTRIBUTION}{extras}" to the dependencies in {pyproject}, '
-            "then run 'python -m agentcraft2_cli install'"
+            f"then run '{invocation()} install'"
         )
     steps.append(f"fill in {target.settings}: its values are examples")
     steps.append(f"run '{command} --plan'")

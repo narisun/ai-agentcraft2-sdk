@@ -114,7 +114,7 @@ def test_init_creates_workspace_docs_and_samples_without_services(
     workspace = tmp_path / "demo"
     out = capsys.readouterr().out
     assert "created  pyproject.toml" in out
-    assert "python -m agentcraft2_cli new mcp hello-mcp" in out
+    assert "agentcraft2 new mcp hello-mcp" in out
     files = tree(workspace)
     assert sorted(files) == [
         ".github/workflows/check.yml",

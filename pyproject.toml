@@ -77,6 +77,9 @@ max-complexity = 12
 "tests/**" = ["D", "S101", "S105", "S106", "S608", "ARG"]
 # The specification fixes these exception names, so the Error-suffix rule is off here.
 "**/contracts/errors.py" = ["N818"]
+# click reads the backspace of \b in a help text as 'do not rewrap this block'.
+"**/agentcraft2_cli/commands/*.py" = ["D301"]
+"**/agentcraft2_cli/app.py" = ["D301"]
 # Method signatures here are fixed by the framework base class.
 "**/adapters/model_fake.py" = ["ARG002"]
 "**/integrations/langgraph/model.py" = ["ARG002"]

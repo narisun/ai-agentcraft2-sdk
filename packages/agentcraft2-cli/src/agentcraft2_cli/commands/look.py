@@ -49,10 +49,21 @@ def _print_checks(title: str, results: tuple[CheckResult, ...]) -> int:
 @workspace_option
 @pass_toolbox
 def doctor(tools: Toolbox, service: str | None, no_pins: bool, workspace: Path | None) -> None:
-    """Check what the workspace, or one SERVICE, needs in order to run.
+    """Verify the configuration: check what the workspace, or one SERVICE, needs to run.
 
-    Each service is built from its .env file and everything it is configured
-    to use is checked. Nothing is changed. The exit code is 1 if a check fails.
+    Each service is built from its .env file and everything it is configured to use is
+    checked: the settings resolve, the variables are known, the adapters build, the
+    registries and the policy rules are valid, and the pins of each MCP server's tools
+    match the server. Nothing is changed. The exit code is 1 if a check fails, and each
+    failure says what to fix.
+
+    \b
+    Examples:
+      ac2 doctor                everything in the workspace
+      ac2 doctor helper         one service
+      ac2 doctor --no-pins      do not start the MCP servers to compare their pins
+
+    With cloud adapters selected, building them can contact AWS.
     """
     root = workspace_root(workspace)
     answers = load_answers(root)
@@ -71,7 +82,19 @@ def doctor(tools: Toolbox, service: str | None, no_pins: bool, workspace: Path |
 
 @click.group()
 def config() -> None:
-    """Look at how a service is configured."""
+    """Look at how a service is configured: its settings, where each came from, what is valid.
+
+    Settings come, strongest first, from the process environment, the service's .env, the
+    project home's .env, agentcraft2.settings.toml, and the profile's defaults.
+
+    \b
+    Examples:
+      ac2 config check helper             verify it (the same as ac2 doctor helper)
+      ac2 config explain helper           every setting and where it came from
+      ac2 config options model bedrock    what the Bedrock model accepts, with defaults
+      ac2 config options                  the adapters of every section
+      ac2 config schema                   JSON Schema of agentcraft2.settings.toml
+    """
 
 
 @config.command("options")
@@ -109,6 +132,24 @@ def config_schema() -> None:
     click.echo(settings_schema())
 
 
+@config.command("check")
+@click.argument("service", required=False)
+@click.option("--no-pins", is_flag=True, help="Do not start each MCP server to compare its pins.")
+@workspace_option
+@click.pass_context
+def config_check(
+    ctx: click.Context, service: str | None, no_pins: bool, workspace: Path | None
+) -> None:
+    """Verify the configuration of the workspace, or of one SERVICE: the same as 'ac2 doctor'.
+
+    \b
+    Examples:
+      ac2 config check             everything
+      ac2 config check helper      one service
+    """
+    ctx.invoke(doctor, service=service, no_pins=no_pins, workspace=workspace)
+
+
 @config.command("explain")
 @click.argument("service")
 @workspace_option
@@ -125,7 +166,10 @@ def config_explain(service: str, workspace: Path | None) -> None:
         click.echo(f"warning: {warning}", err=True)
 
 
-@click.command(context_settings={"ignore_unknown_options": True})
+@click.command(
+    context_settings={"ignore_unknown_options": True},
+    short_help="Start a service and keep it running, logging as it goes.",
+)
 @click.argument("service")
 @click.argument("arguments", nargs=-1, type=click.UNPROCESSED)
 @workspace_option
@@ -140,8 +184,23 @@ def run(
 ) -> None:
     """Start SERVICE and keep it running: an agent's HTTP entry point, or an MCP server.
 
-    Anything after the name is passed to the service, for example --port 9000.
-    Stop it with Ctrl-C; requests in flight finish first.
+    Everything the service writes appears here as it is written and is kept in its log,
+    so 'ac2 logs' and 'ac2 errors' can read it afterwards. A service that cannot start
+    stops at once with the exact message and the full stack trace, and the failure is
+    kept for 'ac2 errors'. Anything after the name is passed to the service, for example
+    --port 9000. Stop it with Ctrl-C; requests in flight finish first.
+
+    \b
+    Examples:
+      ac2 run people            start an MCP server (in one terminal)
+      ac2 run helper            start an agent that calls it (in another)
+      ac2 run helper --port 9000
+      ac2 logs helper -f        watch its log from a third terminal
+
+    \b
+    Call a running agent:
+      curl -X POST http://127.0.0.1:8000/invoke -H "content-type: application/json" \\
+           -d '{"input": {"question": "Say hello to Ada."}, "thread_id": "t1"}'
     """
     root = workspace_root(workspace)
     answers = load_answers(root)

@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Literal, Self
 
 from agentcraft2_cli.dataplan import DataPlan, sample_plan
-from agentcraft2_cli.errors import CliError
+from agentcraft2_cli.errors import CliError, invocation
 from agentcraft2_cli.files import read_text
 from agentcraft2_cli.toml_text import string_of, toml_list, toml_text
 
@@ -254,7 +254,7 @@ def find_workspace(start: Path) -> Path:
             return folder
     raise CliError(
         f"{start} is not inside a workspace: no {WORKSPACE_FILE} here or above. "
-        "Create one with 'agentcraft2 init <name>'."
+        f"Create one with '{invocation()} init <name>'."
     )
 
 

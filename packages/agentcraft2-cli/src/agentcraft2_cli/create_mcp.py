@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from agentcraft2_cli.errors import CliError
+from agentcraft2_cli.errors import CliError, invocation
 from agentcraft2_cli.readers import Proposal
 from agentcraft2_cli.render import Report
 from agentcraft2_cli.scaffold import Scaffolder
@@ -63,9 +63,9 @@ class McpCreated:
     def next_steps(self) -> list[str]:
         """What to do next, one command per line."""
         return [
-            "python -m agentcraft2_cli install",
+            f"{invocation()} install",
             f"python -m pytest {SERVERS_FOLDER}/{self.server.name}",
-            self.server.name,
+            f"{invocation()} run {self.server.name}",
         ]
 
 
