@@ -11,6 +11,7 @@ from agentcraft2_cli.commands.create import init, link, new, registry, update
 from agentcraft2_cli.commands.deploy import deploy
 from agentcraft2_cli.commands.install import install
 from agentcraft2_cli.commands.look import config, doctor, graph, run
+from agentcraft2_cli.commands.observe import errors, logs
 from agentcraft2_cli.commands.rules import policy
 
 __all__ = [
@@ -18,11 +19,13 @@ __all__ = [
     "config",
     "deploy",
     "doctor",
+    "errors",
     "evals",
     "graph",
     "init",
     "install",
     "link",
+    "logs",
     "new",
     "policy",
     "registry",

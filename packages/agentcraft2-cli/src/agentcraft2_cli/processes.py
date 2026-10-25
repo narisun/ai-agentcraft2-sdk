@@ -16,6 +16,8 @@ from pathlib import Path
 from types import FrameType
 
 from agentcraft2_cli.errors import CliError
+from agentcraft2_cli.logbook import LogWriter, log_file
+from agentcraft2_core.config import state_dir
 from agentcraft2_core.contracts import describe
 
 __all__ = [
@@ -152,8 +154,10 @@ def _passing_requests_on() -> Iterator[list[subprocess.Popen[bytes]]]:
 def run_service(folder: Path, module: str, arguments: Sequence[str]) -> int:
     """Run a module of a service until it ends, with this terminal as its own.
 
-    A request to stop this command is passed on to the service, which then
-    stops in its own way; the command ends when the service has.
+    Everything the service writes is shown here as it is written, and kept in the service's
+    log file (``ac2 logs`` reads it, ``ac2 errors`` lists what failed). A request to stop
+    this command is passed on to the service, which then stops in its own way; the command
+    ends when the service has.
 
     Returns:
         The module's exit code.
@@ -163,14 +167,41 @@ def run_service(folder: Path, module: str, arguments: Sequence[str]) -> int:
     """
     if not (folder / "src").is_dir():
         raise CliError(f"{folder} has no src folder; is the service still in the workspace?")
+    log = LogWriter(log_file(state_dir(folder), folder.name), folder.name)
+    log.note(f"starting {module} {' '.join(arguments)}".rstrip())
     # The handlers are in place before the service exists, so no request to stop
     # can fall between starting it and being able to pass the request on.
-    with _passing_requests_on() as started:
-        process = subprocess.Popen(  # noqa: S603 - this interpreter, a module of the service
-            [sys.executable, "-c", _MODULE, module, *arguments], cwd=folder
-        )
+    with (
+        _passing_requests_on() as started,
+        subprocess.Popen(  # noqa: S603 - this interpreter, a module of the service
+            # -u: a pipe is not a terminal, so Python would hold back what the service prints.
+            [sys.executable, "-u", "-c", _MODULE, module, *arguments],
+            cwd=folder,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+        ) as process,
+    ):
         started.append(process)
-        return process.wait()
+        stream = process.stdout
+        if stream is None:  # not reachable: the pipe was asked for above
+            raise CliError("the service's output could not be read")
+        for raw in stream:
+            _show(raw)
+            log.line(raw.decode("utf-8", errors="replace"))
+        code = process.wait()
+    log.finish(code)
+    return code
+
+
+def _show(raw: bytes) -> None:
+    """Write a line the service wrote to this terminal, as it was written."""
+    out = getattr(sys.stdout, "buffer", None)
+    if out is not None:
+        out.write(raw)
+        out.flush()
+    else:  # a stream that takes text only, such as a test's
+        sys.stdout.write(raw.decode("utf-8", errors="replace"))
+        sys.stdout.flush()
 
 
 def run_tool(module: str, arguments: Sequence[str], folder: Path) -> int:
