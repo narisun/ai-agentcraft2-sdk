@@ -21,6 +21,7 @@ from agentcraft2_cli.logbook import (
     parse_line,
     tail_lines,
 )
+from agentcraft2_cli.services.registry import SERVICES
 from agentcraft2_cli.workspace import load_answers
 from agentcraft2_core.config import state_dir
 
@@ -36,13 +37,21 @@ _POLL_SECONDS = 0.5
 def _logs_of(workspace: Path | None, service: str | None) -> list[tuple[str, Path]]:
     """Return the (service, log file) pairs asked for: one service's, or every service's."""
     root = workspace_root(workspace)
+    if service in SERVICES:
+        return [(service, log_file(state_dir(root), service))]
     answers = load_answers(root)
     names = [service] if service is not None else sorted(answers.service_names())
-    return [
+    found = [
         (name, log_file(state_dir(folder), name))
         for name in names
         for folder in [service_folder(root, answers, name)]
     ]
+    if service is None:
+        # Every log: the services' too, when they have written one.
+        found += [
+            (name, path) for name in SERVICES if (path := log_file(state_dir(root), name)).is_file()
+        ]
+    return found
 
 
 def _entries(files: list[tuple[str, Path]], count: int) -> list[Entry]:

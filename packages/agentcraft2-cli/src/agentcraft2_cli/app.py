@@ -14,7 +14,7 @@ _CONTEXT = {"help_option_names": ["-h", "--help"]}
 _SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Start", ("init", "new", "link", "install")),
     ("Verify", ("doctor", "config", "check", "eval", "policy", "graph")),
-    ("Run and watch", ("run", "logs", "errors")),
+    ("Run and watch", ("run", "services", "logs", "errors")),
     ("Keep and ship", ("registry", "update", "deploy")),
 )
 """The commands, by what a developer is doing, in the order they are usually needed."""

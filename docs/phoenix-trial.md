@@ -4,6 +4,10 @@ Phoenix gives Agent Lab a timeline of each agent response: model messages, MCP
 calls, token usage, duration, and links back to checkpoint IDs. It is the only
 agent-tracing backend the library ships, and it stays off until you enable it.
 
+In a workspace made with `ac2`, `ac2 services start phoenix` installs Phoenix into the
+workspace's `.agentcraft2` folder and starts it; see [the `ac2` reference](cli.md#services).
+This page describes the repository's own launchers, which do the same for the rmprep stack.
+
 Phoenix runs on your own machine, started by this repository's launchers, with
 traces in one SQLite file. It needs no account and no key, and nothing leaves the
 machine: [traces stay on your machine](#traces-stay-on-your-machine). Steps 1 to 4

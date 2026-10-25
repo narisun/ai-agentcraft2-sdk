@@ -13,6 +13,7 @@ from agentcraft2_cli.commands.install import install
 from agentcraft2_cli.commands.look import config, doctor, graph, run
 from agentcraft2_cli.commands.observe import errors, logs
 from agentcraft2_cli.commands.rules import policy
+from agentcraft2_cli.commands.services import services
 
 __all__ = [
     "check",
@@ -30,5 +31,6 @@ __all__ = [
     "policy",
     "registry",
     "run",
+    "services",
     "update",
 ]

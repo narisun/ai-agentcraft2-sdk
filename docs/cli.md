@@ -37,7 +37,10 @@ ac2 errors                              # list what failed, with the stack trace
 | `ac2 policy test` | Try the policy samples against the rules, and with `--opa` against OPA. |
 | `ac2 graph AGENT` | The graph of an agent as a Mermaid diagram. |
 | `ac2 run SERVICE` | Start a service and keep it running. What it writes is shown as it is written and kept in its log. |
-| `ac2 logs [SERVICE]` | Read the log of a service, or of all of them. |
+| `ac2 services` | List Phoenix with its state and address; also `ac2 services list`. |
+| `ac2 services start [NAME]` | Install what is missing, start in the background and wait until it answers. |
+| `ac2 services stop [NAME]` | Ask a service to stop, as Ctrl+C does, and wait until it has. |
+| `ac2 logs [SERVICE]` | Read the log of a service, of Phoenix, or of all of them. |
 | `ac2 errors [SERVICE]` | List the failures: the exact message, what was expected and found, the fix, and the stack trace. |
 | `ac2 registry pin SERVER` | Pin the input schema of every tool of a server in the tool registry, so a changed schema is noticed. |
 | `ac2 update` | Bring generated files up to what this version writes; `--plan` previews. |
@@ -82,6 +85,38 @@ ac2 errors helper -n 3 --no-trace # the last three, as messages only
 
 A service started another way, such as `python -m`, writes only to its own terminal, and
 there is nothing for `logs` and `errors` to read.
+
+## Services
+
+Phoenix, the viewer for the traces of your agents, is a service of the SDK. A service runs on
+your machine only and keeps everything it needs in the workspace's state folder,
+`.agentcraft2/` in the workspace (or under `AC2_HOME` when that is set), which Git ignores:
+
+| Path | Holds |
+| --- | --- |
+| `services/<name>/lib/` | the packages of the service, installed by pip into a folder of its own |
+| `services/<name>/data/` | its data, such as Phoenix's database of traces |
+| `services/<name>/run/` | what `ac2 services` and the service's supervisor say to each other |
+| `logs/<name>.log` | its log, beside the logs of your agents |
+
+```bash
+ac2 services                    # what is installed and running, and where it listens
+ac2 services start              # install what is missing, start, wait until it answers
+ac2 services start phoenix      # one service
+ac2 services stop               # ask for a stop, wait for it
+ac2 logs phoenix                # read its log; ac2 errors lists what failed
+```
+
+A new workspace gets a set of its own, so deleting a workspace deletes its services. Each
+service keeps its packages apart from the SDK's, because Phoenix and Agent Lab need packages
+that conflict with each other. On Windows keep the workspace in a short folder: the packages of
+Phoenix have paths of up to 150 characters below `lib/`, and Windows opens none longer than 259
+unless an administrator has enabled long paths; `start` checks this before it installs, and
+says how long a folder it needs. The first `start` installs them with the Python you run `ac2`
+with and its pip, so it needs your package index; the workspace's `agentcraft2.toml` says
+whether the packages come from the index or from a checkout of the SDK. `start` checks first
+that the port is free, and stops with the fix if it is not. Phoenix listens on
+`127.0.0.1:6006`, which is where an agent with `AC2_PHOENIX_ENABLED=true` sends its traces.
 
 ## Settings
 
