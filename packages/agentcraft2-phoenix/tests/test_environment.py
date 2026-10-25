@@ -15,6 +15,7 @@ def test_the_settings_keep_phoenix_on_loopback_and_send_nothing_out(tmp_path: Pa
     assert settings["PHOENIX_ALLOWED_SANDBOX_PROVIDERS"] == "NONE"
     assert settings["PHOENIX_ENABLE_MCP_SERVER"] == "false"
     assert settings["PHOENIX_WORKING_DIR"] == str(tmp_path)
+    assert settings["PHOENIX_LOG_MIGRATIONS"] == "false"
 
 
 def test_the_database_is_a_sqlite_file_in_the_data_folder(tmp_path: Path) -> None:

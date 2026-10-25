@@ -48,7 +48,11 @@ def _row(current: ServiceStatus) -> str:
 
 def _list(ctx: click.Context, tools: Toolbox, workspace: Path | None) -> None:
     root, state, library = _where(ctx, workspace)
-    source = f"the checkout at {library.path}" if library.kind == "path" else "the package index"
+    source = (
+        f"the checkout at {Path(library.path or '')}"
+        if library.kind == "path"
+        else "the package index"
+    )
     click.echo(f"Services for {root}")
     click.echo(f"  state: {state}")
     click.echo(f"  installed from: {source}")

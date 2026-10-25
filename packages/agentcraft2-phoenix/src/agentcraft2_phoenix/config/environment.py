@@ -49,6 +49,8 @@ def server_environment(data_dir: Path, port: int) -> dict[str, str]:
         "PHOENIX_ENABLE_MCP_SERVER": "false",
         "PHOENIX_ENABLE_MCP_CODE_MODE": "false",
         "PHOENIX_ENABLE_PROMETHEUS": "false",
+        # The first start creates the database; do not print its whole schema as log lines.
+        "PHOENIX_LOG_MIGRATIONS": "false",
     }
 
 
