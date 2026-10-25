@@ -331,11 +331,8 @@ def main(argv: Sequence[str] | None = None, *, root: Path = ROOT) -> int:
                 (root / AGENT_ENV).resolve(),
                 (args.env_file if args.env_file is not None else root / ".env").resolve(),
                 required=args.env_file is not None,
-                working_dir=root / WORKSPACE,
             )
-            phoenix = configured_service(
-                root, (root / AGENT_ENV).resolve(), agent_env, agent_cwd=root / WORKSPACE
-            )
+            phoenix = configured_service(root, (root / AGENT_ENV).resolve(), agent_env)
             report(f"MCP environment file: {(root / MCP_ENV).resolve()} (separate settings)")
         config = (root / args.config).resolve()
         if args.config != UI_CONFIG and not config.is_file():

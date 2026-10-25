@@ -35,9 +35,9 @@ from agentcraft2_core.config.phoenix import (
     phoenix_env_example,
     resolve_phoenix_settings,
 )
-from agentcraft2_core.contracts import ConfigurationError, Principal
+from agentcraft2_core.contracts import ConfigurationError, DeploymentEnv, Principal
 from agentcraft2_core.integrations.langgraph._agent_tracing import _content
-from agentcraft2_core.integrations.langgraph.phoenix import PhoenixTracing
+from agentcraft2_core.integrations.langgraph.phoenix import PhoenixTracing, phoenix_tracing
 from agentcraft2_core.integrations.langgraph.tracing import agent_tracing
 from agentcraft2_core.observability.model_trace import JsonlModelTraceSink
 from agentcraft2_core.testing import calls_tool, fake_providers
@@ -55,30 +55,24 @@ def clean_environment(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     deprecations_module._LOGGED.clear()
 
 
-def test_settings_precedence_explicit_disable_and_secret_repr(
+def test_settings_precedence_and_explicit_disable(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     service = tmp_path / ".env"
-    service.write_text("AC2_PHOENIX_ENV_FILE=traces.env\nPHOENIX_PROJECT_NAME=service\n")
-    (tmp_path / "traces.env").write_text(
-        "AC2_PHOENIX_ENABLED=true\nPHOENIX_PROJECT_NAME=separate\nPHOENIX_API_KEY=private-key\n"
-    )
+    service.write_text("AC2_PHOENIX_ENABLED=true\nPHOENIX_PROJECT_NAME=service\n")
     loaded = load_phoenix_settings(service)
     assert loaded
-    assert loaded.project_name == "separate"
+    assert loaded.project_name == "service"
     assert not loaded.capture_content
-    assert "private-key" not in repr(loaded)
     monkeypatch.setenv("PHOENIX_PROJECT_NAME", "shell")
     loaded = load_phoenix_settings(service)
     assert loaded is not None
     assert loaded.project_name == "shell"
-    monkeypatch.setenv("AC2_PHOENIX_ENABLED", "true")
     assert load_service_config(service).profile.value == "local"
     monkeypatch.setenv("AC2_PHOENIX_CAPTURE_CONTENT", "yes")
     with pytest.raises(ConfigurationError, match="true or false"):
         load_phoenix_settings(service)
     monkeypatch.setenv("AC2_PHOENIX_ENABLED", "false")
-    monkeypatch.setenv("AC2_PHOENIX_ENV_FILE", "missing.env")
     assert load_phoenix_settings(service) is None
 
 
@@ -94,49 +88,69 @@ def test_env_example_comments_every_variable_with_its_default() -> None:
     assert shown["AC2_PHOENIX_ENABLED"] == "false"
     assert shown["AC2_PHOENIX_CAPTURE_CONTENT"] == "false"
     assert shown["PHOENIX_COLLECTOR_ENDPOINT"] == defaults.base_url
-    assert shown["PHOENIX_PROJECT_NAME"] == defaults.project_name
-    assert shown["PHOENIX_API_KEY"] != defaults.api_key
+    assert shown["PHOENIX_PROJECT_NAME"] == "my-agent"
 
 
 @pytest.mark.parametrize(
     "url",
     [
         "http://remote.test",
+        "http://10.0.0.5:6006",
+        "http://localhost.example.test",
+        "https://localhost:6006",
+        "https://127.0.0.1",
+        "https://remote.test",
         "https://user:pass@remote.test",
+        "http://user:pass@localhost:6006",
         "https://example.com/v1/traces",
+        "http://localhost/v1/traces",
         "https://example.com?token=x",
         "http://localhost:70000",
         "\x00https://example.com",
     ],
 )
-def test_settings_reject_unsafe_or_non_origin_destinations(url: str) -> None:
-    with pytest.raises(ConfigurationError):
+def test_settings_reject_every_destination_but_a_local_http_origin(url: str) -> None:
+    with pytest.raises(ConfigurationError, match="PHOENIX_COLLECTOR_ENDPOINT must be"):
         PhoenixSettings(base_url=url)
 
 
-def test_planned_child_environment_uses_the_same_file_layers_without_mutation(
+@pytest.mark.parametrize(
+    "url",
+    ["http://localhost:6006", "http://127.0.0.1:6006", "http://[::1]:6006", "http://localhost"],
+)
+def test_settings_accept_a_local_http_origin(url: str) -> None:
+    assert PhoenixSettings(base_url=url).base_url == url
+
+
+def test_the_endpoint_error_says_what_to_do_and_does_not_echo_the_address() -> None:
+    with pytest.raises(ConfigurationError) as error:
+        PhoenixSettings(base_url="https://user:secret@remote.test")
+    shown = str(error.value)
+    assert "never sent to another host" in shown
+    assert "secret" not in shown
+    assert "remote.test" not in shown
+
+
+def test_a_project_is_named_after_the_service_unless_one_is_set() -> None:
+    assert PhoenixSettings().project_for("rm-prep") == "rm-prep"
+    assert PhoenixSettings().project_for("my agent!") == "my-agent-"
+    assert PhoenixSettings().project_for("") == "agentcraft2"
+    assert PhoenixSettings(project_name="shared").project_for("rm-prep") == "shared"
+
+
+def test_planned_child_environment_overrides_the_service_file_without_mutation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     service = tmp_path / ".env"
-    service.write_text("AC2_PHOENIX_ENV_FILE=traces.env\nPHOENIX_PROJECT_NAME=service\n")
-    (tmp_path / "traces.env").write_text(
-        "AC2_PHOENIX_ENABLED=true\nPHOENIX_PROJECT_NAME=separate\n"
-    )
+    service.write_text("AC2_PHOENIX_ENABLED=true\nPHOENIX_PROJECT_NAME=service\n")
     monkeypatch.setenv("AC2_PHOENIX_ENABLED", "false")
-    environment = MappingConfigSource({"PHOENIX_PROJECT_NAME": "child"})
+    environment = MappingConfigSource(
+        {"AC2_PHOENIX_ENABLED": "true", "PHOENIX_PROJECT_NAME": "child"}
+    )
     settings = load_phoenix_settings(service, environment=environment)
     assert settings is not None
     assert settings.project_name == "child"
     assert load_phoenix_settings(service) is None
-    assert (
-        load_phoenix_settings(
-            service,
-            environment=MappingConfigSource(
-                {"AC2_PHOENIX_ENABLED": "false", "AC2_PHOENIX_ENV_FILE": "missing.env"}
-            ),
-        )
-        is None
-    )
     with pytest.raises(ValueError, match="either source or environment"):
         load_phoenix_settings(source=environment, environment=environment)
 
@@ -151,21 +165,16 @@ def _config_messages(caplog: pytest.LogCaptureFixture) -> list[str]:
     return [r.getMessage() for r in caplog.records if r.name == "agentcraft2_core.config"]
 
 
-def _resolve(
-    values: dict[str, str], *, service: Path | None = None, working_dir: Path | None = None
-) -> Any:
-    return resolve_phoenix_settings(
-        service, environment=MappingConfigSource(values), working_dir=working_dir
-    )
+def _resolve(values: dict[str, str], *, service: Path | None = None) -> Any:
+    return resolve_phoenix_settings(service, environment=MappingConfigSource(values))
 
 
 def test_the_canonical_names_are_ac2_and_each_has_an_eap_spelling() -> None:
     owned = [name for name in PHOENIX_VARIABLES if name.startswith(PREFIX)]
-    assert owned == ["AC2_PHOENIX_ENABLED", "AC2_PHOENIX_CAPTURE_CONTENT", "AC2_PHOENIX_ENV_FILE"]
+    assert owned == ["AC2_PHOENIX_ENABLED", "AC2_PHOENIX_CAPTURE_CONTENT"]
     assert [legacy_spelling(name) for name in owned] == [
         "EAP_PHOENIX_ENABLED",
         "EAP_PHOENIX_CAPTURE_CONTENT",
-        "EAP_PHOENIX_ENV_FILE",
     ]
     assert all(legacy_spelling(name).startswith(LEGACY_PREFIX) for name in owned)
 
@@ -225,27 +234,8 @@ def test_a_legacy_resolution_carries_each_warning_every_time_it_is_resolved() ->
         assert sorted(_resolve(legacy).warnings) == sorted(expected)
 
 
-@pytest.mark.parametrize("holder", ["process", "service"])
-def test_a_legacy_separate_file_setting_is_carried_once_though_it_is_read_twice(
-    tmp_path: Path, holder: str
-) -> None:
-    # The setting is read once to find the file's layer and once with the rest.
-    folder = tmp_path / "agent"
-    folder.mkdir()
-    service = folder / ".env"
-    service.write_text("EAP_PHOENIX_ENV_FILE=traces.env\n" if holder == "service" else "")
-    (folder / "traces.env").write_text("AC2_PHOENIX_ENABLED=true\n")
-    environment = {"EAP_PHOENIX_ENV_FILE": "traces.env"} if holder == "process" else {}
-    resolved = _resolve(environment, service=service, working_dir=folder)
-    assert resolved.warnings == (
-        "EAP_PHOENIX_ENV_FILE is deprecated; use AC2_PHOENIX_ENV_FILE instead",
-    )
-
-
 def test_a_legacy_name_disables_tracing_too() -> None:
-    assert (
-        _resolve({"EAP_PHOENIX_ENABLED": "false", "EAP_PHOENIX_ENV_FILE": "x.env"}).settings is None
-    )
+    assert _resolve({"EAP_PHOENIX_ENABLED": "false"}).settings is None
 
 
 def test_both_spellings_with_equal_values_coexist_silently(
@@ -270,7 +260,6 @@ def test_both_spellings_with_equal_values_coexist_silently(
     [
         ("ENABLED", "true", "false"),
         ("CAPTURE_CONTENT", "true", "false"),
-        ("ENV_FILE", "one.env", "two.env"),
     ],
 )
 def test_both_spellings_with_different_values_stop_startup_naming_both(
@@ -303,35 +292,6 @@ def test_the_conflict_rule_holds_across_layers(tmp_path: Path) -> None:
     assert resolved.settings.capture_content
 
 
-@pytest.mark.parametrize("canonical", [False, True])
-@pytest.mark.parametrize("holder", ["process", "service"])
-def test_the_separate_file_is_found_through_either_spelling_in_either_layer(
-    tmp_path: Path, canonical: bool, holder: str
-) -> None:
-    variable = ("AC2" if canonical else "EAP") + "_PHOENIX_ENV_FILE"
-    folder = tmp_path / "agent"
-    folder.mkdir()
-    service = folder / ".env"
-    service.write_text(f"{variable}=traces.env\n" if holder == "service" else "")
-    (folder / "traces.env").write_text("AC2_PHOENIX_ENABLED=true\nPHOENIX_PROJECT_NAME=separate\n")
-    environment = {variable: "traces.env"} if holder == "process" else {}
-    resolved = _resolve(environment, service=service, working_dir=folder)
-    assert resolved.settings is not None
-    assert resolved.settings.project_name == "separate"
-    # The separate file is reported as the origin of the settings it supplied.
-    assert str((folder / "traces.env").resolve()) in resolved.origins["AC2_PHOENIX_ENABLED"]
-
-
-def test_a_legacy_disable_in_the_process_skips_the_separate_file_like_the_canonical_one(
-    tmp_path: Path,
-) -> None:
-    service = tmp_path / ".env"
-    service.write_text("AC2_PHOENIX_ENV_FILE=missing.env\n")
-    assert _resolve({"EAP_PHOENIX_ENABLED": "false"}, service=service).settings is None
-    with pytest.raises(ConfigurationError, match="configuration file not found"):
-        _resolve({"EAP_PHOENIX_ENABLED": "true"}, service=service)
-
-
 def test_a_legacy_name_in_the_service_file_enables_tracing_and_warns(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -361,6 +321,74 @@ def test_the_resolver_accepts_a_canonical_phoenix_name_and_the_loader_honours_it
     settings = load_phoenix_settings(service)
     assert settings is not None
     assert settings.project_name == "from-file"
+
+
+# ------------------------------------------------- no route to a Phoenix on another host
+
+
+def test_a_variable_that_an_earlier_release_read_is_told_about_and_never_read(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    service = tmp_path / ".env"
+    service.write_text("AC2_PHOENIX_ENABLED=true\nPHOENIX_API_KEY=private-key\n")
+    environment = MappingConfigSource(
+        {"AC2_PHOENIX_ENV_FILE": "other.env", "EAP_PHOENIX_ENV_FILE": "other.env"}
+    )
+    resolved = resolve_phoenix_settings(service, environment=environment)
+    assert resolved.settings is not None
+    assert resolved.removed == (
+        "PHOENIX_API_KEY is no longer used: traces go only to a Phoenix on this machine, "
+        "which needs no key. Remove it.",
+        "AC2_PHOENIX_ENV_FILE is no longer read: it carried settings for a Phoenix on "
+        "another host. Put the tracing settings in the service's .env.",
+        "EAP_PHOENIX_ENV_FILE is no longer read: it carried settings for a Phoenix on "
+        "another host. Put the tracing settings in the service's .env.",
+    )
+    assert "private-key" not in repr(resolved)
+    assert set(resolved.shown) == set(PHOENIX_VARIABLES)
+    with caplog.at_level(logging.WARNING, logger="agentcraft2_core.config"):
+        assert load_phoenix_settings(service, environment=environment) is not None
+    assert sorted(_config_messages(caplog)) == sorted(resolved.removed)
+
+
+def test_no_removed_variable_is_set_when_none_is_set() -> None:
+    assert _resolve({"AC2_PHOENIX_ENABLED": "true"}).removed == ()
+
+
+def test_the_service_configuration_still_accepts_a_removed_variable_so_the_loader_can_say_so(
+    tmp_path: Path,
+) -> None:
+    service = tmp_path / ".env"
+    service.write_text("AC2_PHOENIX_ENV_FILE=old.env\n")
+    assert load_service_config(service).profile.value == "local"
+
+
+def test_a_key_in_the_environment_is_never_sent_with_the_traces(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sent: list[dict[str, Any]] = []
+
+    def exporter(endpoint: str, **options: Any) -> InMemorySpanExporter:
+        sent.append({"endpoint": endpoint, **options})
+        return InMemorySpanExporter()
+
+    monkeypatch.setenv("PHOENIX_API_KEY", "private-key")
+    monkeypatch.setattr("agentcraft2_core.integrations.langgraph.phoenix.otlp_exporter", exporter)
+    PhoenixTracing(PhoenixSettings(), application="support")
+    assert sent == [
+        {"endpoint": "http://127.0.0.1:6006/v1/traces", "headers": {}, "backend": "Phoenix"}
+    ]
+
+
+@pytest.mark.parametrize("env", [DeploymentEnv.DEV, DeploymentEnv.PROD])
+async def test_a_deployed_service_does_not_start_phoenix_tracing(env: DeploymentEnv) -> None:
+    config = ServiceConfig.for_testing(deployment_env=env)
+    with pytest.raises(ConfigurationError, match="a tool for a developer's machine") as error:
+        async with phoenix_tracing("test", config, dotenv_path=None, settings=PhoenixSettings()):
+            pytest.fail("tracing must not start")
+    assert f"on in {env.value}" in str(error.value)
+    async with phoenix_tracing("test", config, dotenv_path=None, settings=None) as tracing:
+        assert tracing is None
 
 
 async def test_agent_tracing_yields_nothing_until_phoenix_is_enabled(tmp_path: Path) -> None:
@@ -471,9 +499,7 @@ async def test_turns_tools_input_output_usage_checkpoints_and_local_sink(
         assert len(tools) == 1
         assert len({s.context.trace_id for s in roots}) == 2
         assert len({(s.attributes or {})["session.id"] for s in roots}) == 1
-        assert all(
-            s.resource.attributes["openinference.project.name"] == "agent-lab" for s in spans
-        )
+        assert all(s.resource.attributes["openinference.project.name"] == "support" for s in spans)
         for root in roots:
             checkpoints = json.loads(str((root.attributes or {})["agentcraft2.checkpoints"]))
             assert len(checkpoints) >= 3
@@ -824,7 +850,7 @@ class NoSdk(importlib.abc.MetaPathFinder):
 sys.meta_path.insert(0, NoSdk())
 from agentcraft2_core import ServiceConfig
 from agentcraft2_core.config.phoenix import PhoenixSettings
-from agentcraft2_core.contracts import ConfigurationError, Principal
+from agentcraft2_core.contracts import ConfigurationError, DeploymentEnv, Principal
 from agentcraft2_core.integrations.langgraph.phoenix import PhoenixTracing, phoenix_tracing
 async def main():
     async with phoenix_tracing("plain", ServiceConfig.for_testing(), dotenv_path=None) as tracing:

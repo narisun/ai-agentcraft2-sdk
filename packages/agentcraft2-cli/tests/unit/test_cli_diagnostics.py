@@ -280,9 +280,9 @@ def test_config_explain_shows_each_setting_its_origin_and_no_secret(
 @pytest.mark.parametrize(
     ("broken", "expected"),
     [
-        ("PHOENIX_COLLECTOR_ENDPOINT=not-an-origin\n", "HTTPS origin"),
+        ("PHOENIX_COLLECTOR_ENDPOINT=not-an-origin\n", "on this machine"),
+        ("PHOENIX_COLLECTOR_ENDPOINT=https://phoenix.example\n", "on this machine"),
         ("AC2_PHOENIX_CAPTURE_CONTENT=yes\n", "true or false"),
-        ("AC2_PHOENIX_ENV_FILE=missing.env\n", "configuration file not found"),
     ],
 )
 def test_phoenix_configuration_errors_fail_diagnostics(
@@ -307,7 +307,7 @@ def test_phoenix_configuration_errors_fail_diagnostics(
     assert "phoenix-test-secret" not in doctor.out + doctor.err + explain.out + explain.err
 
 
-def test_phoenix_explanation_matches_file_precedence_and_disabled_override(
+def test_phoenix_explanation_matches_precedence_and_disabled_override(
     workspace: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -318,12 +318,9 @@ def test_phoenix_explanation_matches_file_precedence_and_disabled_override(
     folder = workspace / "agents/hello-agent"
     env = folder / ".env"
     env.write_text(
-        env.read_text(encoding="utf-8") + "AC2_PHOENIX_ENV_FILE=traces.env\n", encoding="utf-8"
-    )
-    extra = folder / "traces.env"
-    extra.write_text(
-        "AC2_PHOENIX_ENABLED=true\nPHOENIX_PROJECT_NAME=from-file\n"
-        "PHOENIX_API_KEY=private-key\nAC2_PHOENIX_CAPTURE_CONTENT=true\n",
+        env.read_text(encoding="utf-8")
+        + "AC2_PHOENIX_ENABLED=true\nPHOENIX_PROJECT_NAME=from-file\n"
+        "AC2_PHOENIX_CAPTURE_CONTENT=true\n",
         encoding="utf-8",
     )
     monkeypatch.setenv("PHOENIX_PROJECT_NAME", "from-shell")
@@ -331,12 +328,49 @@ def test_phoenix_explanation_matches_file_precedence_and_disabled_override(
     assert settings is not None
     entries = {entry.variable: entry for entry in explain_service(folder)[0]}
     assert entries["PHOENIX_PROJECT_NAME"].value == settings.project_name == "from-shell"
-    assert str(extra) in entries["AC2_PHOENIX_CAPTURE_CONTENT"].origin
-    assert entries["PHOENIX_API_KEY"].value == "********"
+    assert str(env.resolve()) in entries["AC2_PHOENIX_CAPTURE_CONTENT"].origin
+    assert "PHOENIX_API_KEY" not in entries
     monkeypatch.setenv("AC2_PHOENIX_ENABLED", "false")
-    monkeypatch.setenv("AC2_PHOENIX_ENV_FILE", "missing.env")
     assert run("doctor", "hello-agent", "--workspace", workspace) == 0
     assert "phoenix: disabled" in capsys.readouterr().out
+
+
+def test_a_variable_that_is_no_longer_read_is_told_and_its_value_is_never_shown(
+    workspace: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from agentcraft2_cli.diagnostics import explain_service
+
+    folder = workspace / "agents/hello-agent"
+    env = folder / ".env"
+    env.write_text(
+        env.read_text(encoding="utf-8")
+        + "AC2_PHOENIX_ENABLED=true\nPHOENIX_API_KEY=phoenix-test-secret\n"
+        "AC2_PHOENIX_ENV_FILE=traces.env\n",
+        encoding="utf-8",
+    )
+    capsys.readouterr()
+    assert run("doctor", "hello-agent", "--workspace", workspace) == 0
+    doctor = capsys.readouterr()
+    assert "PHOENIX_API_KEY is no longer used" in doctor.out
+    assert "AC2_PHOENIX_ENV_FILE is no longer read" in doctor.out
+    assert "phoenix-test-secret" not in doctor.out + doctor.err
+    _, warnings = explain_service(folder)
+    assert any("PHOENIX_API_KEY is no longer used" in text for text in warnings)
+
+
+def test_doctor_refuses_phoenix_tracing_for_a_deployed_environment(
+    workspace: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    env = workspace / "agents/hello-agent/.env"
+    env.write_text(
+        env.read_text(encoding="utf-8")
+        + variable_for(Key.DEPLOYMENT_ENV)
+        + "=dev\nAC2_PHOENIX_ENABLED=true\n",
+        encoding="utf-8",
+    )
+    capsys.readouterr()
+    assert run("doctor", "hello-agent", "--workspace", workspace) == 1
+    assert "a tool for a developer's machine" in capsys.readouterr().out
 
 
 def test_the_generated_samples_come_out_as_they_expect(

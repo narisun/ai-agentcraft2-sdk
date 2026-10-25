@@ -156,7 +156,7 @@ def test_an_unknown_legacy_name_suggests_the_canonical_vocabulary() -> None:
     assert "did you mean AC2_MODEL_PROVIDER" in str(caught.value)
 
 
-@pytest.mark.parametrize("vendor", ["API_KEY", "PROJECT_NAME", "COLLECTOR_ENDPOINT"])
+@pytest.mark.parametrize("vendor", ["PROJECT_NAME", "COLLECTOR_ENDPOINT"])
 @pytest.mark.parametrize("prefix", [PREFIX, LEGACY_PREFIX])
 def test_a_prefixed_spelling_of_a_vendor_phoenix_name_is_unknown(prefix: str, vendor: str) -> None:
     # The vendor's PHOENIX_* names are read as written; AC2_PHOENIX_API_KEY would be accepted
@@ -178,9 +178,14 @@ def test_the_librarys_own_phoenix_names_are_known_in_both_spellings() -> None:
     names = {
         f"{prefix}PHOENIX_{setting}"
         for prefix in (PREFIX, LEGACY_PREFIX)
-        for setting in ("ENABLED", "CAPTURE_CONTENT", "ENV_FILE")
+        for setting in ("ENABLED", "CAPTURE_CONTENT")
     }
     explain(dict.fromkeys(names, "false"))
+
+
+def test_a_phoenix_name_that_is_no_longer_read_is_still_known_so_the_loader_can_say_so() -> None:
+    # Stopping startup on it would hide the loader's message about what to do instead.
+    explain({"AC2_PHOENIX_ENV_FILE": "x.env", "EAP_PHOENIX_ENV_FILE": "x.env"})
 
 
 def test_a_legacy_name_whose_canonical_spelling_exists_is_pointed_at_it() -> None:

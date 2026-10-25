@@ -973,7 +973,7 @@ AC2_MODEL_PROVIDER=fake</code></pre>
   tries to build and validate the configured services; with cloud adapters, this can
   contact those services.</p>
   <p>For optional Phoenix tracing, <code>explain</code> also shows the
-  source file or process variable for each setting and masks the API key.
+  source file or process variable for each setting.
   <code>doctor</code> uses the same resolver as startup and checks the destination
   and capture settings. These tracing checks validate configuration without
   contacting the tracing server.</p>
@@ -2094,10 +2094,9 @@ async def classify(
     before the MCP, agent, and UI services. It keeps separate <code>.venv</code> packages and uses the default Python;
     <code>stop-local.bat</code> stops the stack and preserves SQLite traces. The agent
     adds an <strong>Open trace in Agent Lab</strong> link to each response, opening the configured Phoenix trace. The walkthrough
-    lists the opt-in settings and a verified Anthropic conversation. To send traces
-    to a Phoenix server your platform team runs instead, set
-    <code>PHOENIX_COLLECTOR_ENDPOINT</code> as described in its
-    <a href="phoenix-trial.md#send-traces-to-a-team-hosted-phoenix">team-hosted section</a>.
+    lists the opt-in settings and a verified Anthropic conversation. Traces go
+    only to a Phoenix on your own machine, with no key; see
+    <a href="phoenix-trial.md#traces-stay-on-your-machine">where traces go</a>.
     A generated agent's <code>docs/tracing.md</code> lists the same settings for its own
     service; the <a href="#variables">configuration table</a> names each one.</p>
     <p>Blocking PII checks and structured-output schemas buffer text until they pass.

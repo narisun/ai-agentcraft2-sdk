@@ -103,10 +103,10 @@ def test_a_model_trace_file_on_a_developers_machine_needs_no_warning() -> None:
     assert ConfigResolver(MappingConfigSource(values)).explain().warnings == ()
 
 
-async def test_phoenix_content_capture_is_refused_in_production() -> None:
+async def test_phoenix_tracing_is_refused_in_production() -> None:
     config = ServiceConfig(deployment_env=DeploymentEnv.PROD)
-    with pytest.raises(ConfigurationError, match="a production service does not send it"):
-        async with phoenix_tracing("agent", config, settings=PhoenixSettings(capture_content=True)):
+    with pytest.raises(ConfigurationError, match="a tool for a developer's machine"):
+        async with phoenix_tracing("agent", config, settings=PhoenixSettings()):
             pass
 
 

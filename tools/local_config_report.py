@@ -25,11 +25,9 @@ _VISIBLE_EXTRAS = frozenset(
         "RMPREP_CONTEXT_TOOL_SCHEMA_TOKENS",
         "AC2_PHOENIX_ENABLED",
         "AC2_PHOENIX_CAPTURE_CONTENT",
-        "AC2_PHOENIX_ENV_FILE",
         # The earlier EAP_ spellings stay visible for the deprecation window.
         "EAP_PHOENIX_ENABLED",
         "EAP_PHOENIX_CAPTURE_CONTENT",
-        "EAP_PHOENIX_ENV_FILE",
         "PHOENIX_COLLECTOR_ENDPOINT",
         "PHOENIX_PROJECT_NAME",
     }
@@ -115,8 +113,7 @@ def report_environment(
                 rows[name] = (_display(extra_value, visible=name in _VISIBLE_EXTRAS), label)
                 break
     if tracing is not None:
-        # Raw launcher/service layers cannot explain a separate tracing file.
-        # Replace those rows with the same resolution used by agent startup.
+        # Replace the raw rows with the same resolution used by agent startup.
         for name, value in tracing.shown.items():
             origin = tracing.origins[name]
             if origin.startswith("process environment: "):
@@ -131,3 +128,5 @@ def report_environment(
     )
     for name, (value, origin) in sorted(rows.items()):
         report(f"  {name}={value}  [{origin}]")
+    for message in tracing.removed if tracing is not None else ():
+        report(f"  note: {message}")

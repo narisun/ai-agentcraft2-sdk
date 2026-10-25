@@ -22,7 +22,7 @@ from agentcraft2_core.adapters import (
     UuidGenerator,
 )
 from agentcraft2_core.config import DEFAULT_BINDINGS, service_resolver
-from agentcraft2_core.config.phoenix import resolve_phoenix_settings
+from agentcraft2_core.config.phoenix import require_local_tracing, resolve_phoenix_settings
 from agentcraft2_core.contracts import AgentCraft2Error, CheckResult
 from agentcraft2_core.di import diagnose
 from agentcraft2_core.observability import redact
@@ -98,10 +98,11 @@ async def check_service(folder: Path) -> tuple[CheckResult, ...]:
     try:
         with _reported_here():
             phoenix_resolution = resolve_phoenix_settings(dotenv)
+            require_local_tracing(phoenix_resolution.settings, config.deployment_env)
     except AgentCraft2Error as problem:
         phoenix = CheckResult.failed("phoenix", problem)
     else:
-        phoenix_warnings = phoenix_resolution.warnings
+        phoenix_warnings = (*phoenix_resolution.warnings, *phoenix_resolution.removed)
         phoenix = CheckResult(
             "phoenix",
             ok=True,
@@ -250,4 +251,4 @@ def explain_service(folder: Path) -> tuple[Sequence[Setting], Sequence[str]]:
         Setting(variable=name, value=redact(value)[:_MAX_VALUE], origin=phoenix.origins[name])
         for name, value in phoenix.shown.items()
     ]
-    return settings, (*resolution.warnings, *phoenix.warnings)
+    return settings, (*resolution.warnings, *phoenix.warnings, *phoenix.removed)
