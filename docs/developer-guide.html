@@ -431,8 +431,8 @@ def test_expiry_uses_the_supplied_clock() -&gt; None:
   </details>
 
   <h3 id="service-entry-point">Declare the service; <code>run_agent</code> runs it</h3>
-  <p>A service need not write its own composition root. The generated agents, the
-  reference <code>accounts-agent</code>, and <code>rmprep</code> declare what is
+  <p>A service need not write its own composition root. The generated agents and the
+  <code>rmprep</code> example declare what is
   theirs in one <code>AgentService</code> and pass it to <code>run_agent</code>.
   This is the generated <code>helper</code> agent's <code>service.py</code>, trimmed
   to the essentials; the generated file adds streaming, the outcome journal,
@@ -576,7 +576,7 @@ def main() -&gt; int:
   and <a href="../packages/agentcraft2-core/src/agentcraft2_core/di/container.py">di/container.py</a>.
   Follow <a href="../packages/agentcraft2-core/src/agentcraft2_core/pipeline/assembly.py">pipeline/assembly.py</a>
   into its stages, then see the connection to a real graph in
-  <a href="../examples/accounts-agent/src/accounts_agent/graph.py">accounts_agent/graph.py</a>.
+  <a href="../examples/rmprep/agents/rmprep/src/rmprep/graph.py">rmprep/graph.py</a>.
   </p>
   </details>
   <div class="note">

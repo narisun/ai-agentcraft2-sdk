@@ -12,8 +12,6 @@ resolution-markers = [
 
 [manifest]
 members = [
-    "accounts-agent",
-    "accounts-mcp",
     "agentcraft2-aws",
     "agentcraft2-cli",
     "agentcraft2-core",
@@ -29,7 +27,7 @@ dev = [
     { name = "mcp", specifier = ">=2.3" },
     { name = "mypy", specifier = ">=1.11" },
     { name = "opentelemetry-sdk", specifier = ">=1.28" },
-    { name = "pgserver", marker = "platform_machine == 'x86_64' or sys_platform != 'linux'", specifier = ">=0.1.4" },
+    { name = "pgserver", marker = "(python_full_version < '3.13' and platform_machine == 'x86_64') or (python_full_version < '3.13' and sys_platform != 'linux')", specifier = ">=0.1.4" },
     { name = "pytest", specifier = ">=8.2" },
     { name = "pytest-asyncio", specifier = ">=1.4" },
     { name = "pytest-cov", specifier = ">=5.0" },
@@ -39,28 +37,6 @@ dev = [
     { name = "types-jsonschema", specifier = ">=4.21" },
     { name = "types-pyyaml", specifier = ">=6.0" },
 ]
-
-[[package]]
-name = "accounts-agent"
-version = "0.1.0"
-source = { editable = "examples/accounts-agent" }
-dependencies = [
-    { name = "agentcraft2-core", extra = ["jwt", "mcp", "otel", "serve"] },
-]
-
-[package.metadata]
-requires-dist = [{ name = "agentcraft2-core", extras = ["jwt", "mcp", "otel", "serve"], editable = "packages/agentcraft2-core" }]
-
-[[package]]
-name = "accounts-mcp"
-version = "0.1.0"
-source = { editable = "examples/accounts-mcp" }
-dependencies = [
-    { name = "agentcraft2-core", extra = ["duckdb", "jwt", "mcp", "otel", "serve"] },
-]
-
-[package.metadata]
-requires-dist = [{ name = "agentcraft2-core", extras = ["duckdb", "jwt", "mcp", "otel", "serve"], editable = "packages/agentcraft2-core" }]
 
 [[package]]
 name = "agentcraft2-aws"
@@ -73,6 +49,10 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+agentcore = [
+    { name = "agentcraft2-core", extra = ["mcp"] },
+    { name = "langgraph-checkpoint-aws" },
+]
 bedrock = [
     { name = "langchain-aws" },
 ]
@@ -85,14 +65,16 @@ postgres = [
 [package.metadata]
 requires-dist = [
     { name = "agentcraft2-core", editable = "packages/agentcraft2-core" },
+    { name = "agentcraft2-core", extras = ["mcp"], marker = "extra == 'agentcore'", editable = "packages/agentcraft2-core" },
     { name = "boto3", specifier = ">=1.35" },
     { name = "langchain-aws", marker = "extra == 'bedrock'", specifier = ">=1.0,<2" },
+    { name = "langgraph-checkpoint-aws", marker = "extra == 'agentcore'", specifier = ">=1.2,<2" },
     { name = "langgraph-checkpoint-postgres", marker = "extra == 'postgres'", specifier = ">=3.1,<4" },
     { name = "psycopg", extras = ["binary", "pool"], marker = "extra == 'postgres'", specifier = ">=3.2" },
     { name = "psycopg-pool", marker = "extra == 'postgres'", specifier = ">=3.3" },
     { name = "sqlglot", specifier = ">=25.0" },
 ]
-provides-extras = ["bedrock", "postgres"]
+provides-extras = ["bedrock", "postgres", "agentcore"]
 
 [[package]]
 name = "agentcraft2-cli"
@@ -1457,6 +1439,20 @@ wheels = [
 ]
 
 [[package]]
+name = "langgraph-checkpoint-aws"
+version = "1.2.6"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "boto3" },
+    { name = "langgraph" },
+    { name = "langgraph-checkpoint" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/95/03/52f4a13fe7b8878fe19ae01f0fc0eff534874a7fab15dee943198a02dc95/langgraph_checkpoint_aws-1.2.6.tar.gz", hash = "sha256:882e4cb8220af0649f8a7cbe0a1f4e209829f3858c043cbd031422d7baa9d917", size = 355418, upload-time = "2026-10-23T01:06:00.321Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d9/49/e01f7cf84febc5c8cded764efc703c91a8fae0b7bcfa99fd377311ae0c42/langgraph_checkpoint_aws-1.2.6-py3-none-any.whl", hash = "sha256:749a662c4b4eabd48ad8125c3a9e503749669217b143e666fd6790faff0fb7c5", size = 188817, upload-time = "2026-10-23T01:05:59.28Z" },
+]
+
+[[package]]
 name = "langgraph-checkpoint-postgres"
 version = "3.1.2"
 source = { registry = "https://pypi.org/simple" }
@@ -2314,9 +2310,9 @@ name = "pgserver"
 version = "0.1.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "fasteners" },
-    { name = "platformdirs" },
-    { name = "psutil" },
+    { name = "fasteners", marker = "python_full_version < '3.14'" },
+    { name = "platformdirs", marker = "python_full_version < '3.14'" },
+    { name = "psutil", marker = "python_full_version < '3.14'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/35/f1/475d079b823c26deaf8a2cc3d7358a8f5cfa481bd5a8f878666b08450ed9/pgserver-0.1.4-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:854fa9394d495b3a332c954b63d4356b56d29220530e6d2aae146821bf87e05a", size = 10378190, upload-time = "2024-06-08T18:41:30.005Z" },

@@ -80,7 +80,7 @@ ai-agent-lib/                 # repository and uv workspace root; not a distribu
   policies/            # Rego starter bundle and tests
   registry/            # sample agents.yaml and mcp-tools.yaml
   deploy/              # base image, Terraform modules
-  examples/            # accounts-mcp, accounts-agent
+  examples/            # rmprep, rmqna: static workspaces
   docs/adr/            # recorded decisions
 ```
 

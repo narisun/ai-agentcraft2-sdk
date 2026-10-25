@@ -266,6 +266,25 @@ It sends two questions on the same thread, prints the model trace and checkpoint
 snapshots, and accepts `--thread` to continue a saved conversation. Other agents
 have these examples under their own package names; their READMEs give exact commands.
 
+## Examples
+
+`examples/rmprep` and `examples/rmqna` are static workspaces that `agentcraft2` created and
+that a team then built on. They are not part of this repository's build: nothing in `packages`
+imports them, and the lint, type and test runs here skip them. Copy a folder anywhere, or
+download the `example-rmprep` or `example-rmqna` zip from the latest run of the
+[Examples workflow](.github/workflows/examples.yml), then:
+
+```bash
+python -m pip install "agentcraft2-cli>=0.1,<0.2"
+cd rmprep
+ac2 install
+ac2 check
+```
+
+The Examples workflow does exactly this on a copy of each folder, against the library in this
+checkout, once a week and whenever an example or a package changes, so an example that stops
+working shows up there.
+
 ## Explore the repository
 
 | Path | What it contains |
@@ -273,9 +292,8 @@ have these examples under their own package names; their READMEs give exact comm
 | [Core package](packages/agentcraft2-core/README.md) | Contracts, configuration, service composition, local adapters, model/tool checks, framework integrations, and test helpers |
 | [AWS package](packages/agentcraft2-aws/README.md) | AWS adapters and their optional dependencies |
 | [CLI package](packages/agentcraft2-cli/README.md) | The `agentcraft2` command, also available as `python -m agentcraft2_cli` |
-| [Reference agent](examples/accounts-agent/README.md) | A working LangGraph agent |
-| [Reference MCP server](examples/accounts-mcp/README.md) | Shared tools, named queries, and sample CSV data |
-| [Relationship manager preparation](examples/rmprep/README.md) | Router, memo and Q&A nodes over 33 supplied CSVs, with governed MCP evidence, source references and checkpoints |
+| [Example: relationship manager preparation](examples/rmprep/README.md) | A static workspace: router, memo and Q&A nodes over 33 supplied CSVs, with governed MCP evidence, source references and checkpoints |
+| [Example: relationship manager questions](examples/rmqna/README.md) | A static workspace: one agent that writes read-only SQL, and the MCP server that validates and runs it |
 | [Agent Lab package](packages/agentcraft2-ui/README.md) | `packages/agentcraft2-ui`: the browser simulator with chat, memo versions, trace links, answer feedback, and online-eval export of saved chats |
 | [Policies](policies/README.md) | Rules and the OPA policy bundle |
 | [Architecture tests](tests/architecture) | Checks that enforce package boundaries and keep documentation current |
@@ -306,7 +324,7 @@ PYTHON=python3
 "$PYTHON" tools/install_dev.py
 ```
 
-`tools/install_dev.py` uses pip to install the local packages, examples,
+`tools/install_dev.py` uses pip to install the local packages,
 optional dependencies, and development tools. Then run these checks from
 the library root, replacing `"%PYTHON%"` with `"$PYTHON"` on macOS/Linux:
 

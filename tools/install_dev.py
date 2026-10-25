@@ -41,10 +41,9 @@ def main() -> int:
     root = Path(__file__).resolve().parents[1]
     config = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
     arguments = [*config["dependency-groups"]["dev"]]
-    for group in ("packages", "examples"):
-        for project in sorted((root / group).glob("*/pyproject.toml")):
-            for requirement in editable_requirements(project):
-                arguments.extend(("--editable", requirement))
+    for project in sorted((root / "packages").glob("*/pyproject.toml")):
+        for requirement in editable_requirements(project):
+            arguments.extend(("--editable", requirement))
     return subprocess.call(  # noqa: S603 - current interpreter and declared requirements
         [sys.executable, "-m", "pip", "install", *arguments, *sys.argv[1:]], cwd=root
     )

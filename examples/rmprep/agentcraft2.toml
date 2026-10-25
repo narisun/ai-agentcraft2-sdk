@@ -6,8 +6,8 @@ name = "rmprep"
 owner = "commercial-banking"
 
 [library]
-source = "path"
-path = "../.."
+source = "index"
+version = ">=0.1,<0.2"
 
 [[mcp_servers]]
 name = "rmprep-data"
