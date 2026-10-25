@@ -145,6 +145,7 @@ valid_rule(rule) if {
 	every action in rule.actions {
 		action in actions
 	}
+
 	# A key that is present holds a value. `roles: null` would mean "any caller", the widest
 	# rule there is, and a key left empty in YAML reads as null: neither is accepted. Leave the
 	# key out for "any".
