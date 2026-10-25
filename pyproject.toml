@@ -3,8 +3,8 @@
 # and holds the shared tool configuration.
 
 [tool.uv.workspace]
-members = ["packages/*", "examples/*"]
-exclude = ["examples/rmprep", "examples/rmqna", "packages/agentcraft2-ui"] # Separately managed environments.
+members = ["packages/*"]
+exclude = ["packages/agentcraft2-ui"] # A separately managed environment.
 
 [dependency-groups]
 dev = [
@@ -33,9 +33,10 @@ dev = [
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-src = ["packages/*/src", "examples/*/src"]
-# Plan documents quote Python fragments that are not standalone files.
-exclude = ["docs/superpowers"]
+# Plan documents quote Python fragments that are not standalone files. The examples are
+# static workspaces with their own settings; they are checked as a developer would check them.
+src = ["packages/*/src"]
+exclude = ["docs/superpowers", "examples"]
 
 [tool.ruff.lint]
 select = [
@@ -111,14 +112,6 @@ mypy_path = [
     "$MYPY_CONFIG_FILE_DIR/packages/agentcraft2-core/tests",
     "$MYPY_CONFIG_FILE_DIR/packages/agentcraft2-aws/tests",
     "$MYPY_CONFIG_FILE_DIR/packages/agentcraft2-cli/tests",
-    "$MYPY_CONFIG_FILE_DIR/examples/accounts-agent/src",
-    "$MYPY_CONFIG_FILE_DIR/examples/accounts-agent/tests",
-    "$MYPY_CONFIG_FILE_DIR/examples/accounts-mcp/src",
-    "$MYPY_CONFIG_FILE_DIR/examples/accounts-mcp/tests",
-    "$MYPY_CONFIG_FILE_DIR/examples/rmprep/agents/rmprep/src",
-    "$MYPY_CONFIG_FILE_DIR/examples/rmprep/mcp-servers/rmprep-data/src",
-    "$MYPY_CONFIG_FILE_DIR/examples/rmqna/agents/rmqna/src",
-    "$MYPY_CONFIG_FILE_DIR/examples/rmqna/mcp-servers/rmqna-data/src",
     "$MYPY_CONFIG_FILE_DIR/tests",
     "$MYPY_CONFIG_FILE_DIR/docs/guide",
 ]
@@ -129,16 +122,6 @@ files = [
     "packages/agentcraft2-core/tests",
     "packages/agentcraft2-aws/tests",
     "packages/agentcraft2-cli/tests",
-    "examples/accounts-agent/src",
-    "examples/accounts-agent/tests",
-    "examples/accounts-mcp/src",
-    "examples/accounts-mcp/tests",
-    "examples/rmprep/agents",
-    "examples/rmprep/mcp-servers",
-    "examples/rmprep/tests",
-    "examples/rmqna/agents",
-    "examples/rmqna/mcp-servers",
-    "examples/rmqna/tests",
     "tests",
     "docs/guide",
     "tools",
@@ -147,11 +130,13 @@ files = [
 # ------------------------------------------------------------------------- pytest
 [tool.pytest.ini_options]
 minversion = "8.0"
-testpaths = ["packages", "examples", "tests"]
+testpaths = ["packages", "tests"]
 # Lets the repository-level tests import their shared helpers.
-pythonpath = ["tests", "examples/accounts-mcp/tests", "docs/guide"]
+pythonpath = ["tests", "docs/guide"]
 addopts = [
     "--ignore=packages/agentcraft2-ui/tests",
+    # Static examples: a developer runs their tests with agentcraft2, not this repository.
+    "--ignore=examples",
     "--import-mode=importlib",
     "--strict-markers",
     "--strict-config",

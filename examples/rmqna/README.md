@@ -36,14 +36,18 @@ pointing the engine at anything real.
 
 ## 1. Install
 
-Use Python 3.11 or newer in a virtual environment. From this workspace's folder, with the library
-checkout two levels up (see `agentcraft2.toml`):
+This folder is a complete `agentcraft2` workspace. Copy it anywhere, or download its zip from the
+repository's Examples workflow. Use Python 3.11 or newer in a virtual environment, and run from the
+copy's folder:
 
 ```bash
-python -m pip install -e ../../packages/agentcraft2-core -e ../../packages/agentcraft2-cli
-python -m agentcraft2_cli install
-python -m agentcraft2_cli check
+python -m pip install "agentcraft2-cli>=0.1,<0.2"
+ac2 install
+ac2 check
 ```
+
+In a checkout of the SDK repository, install its packages first:
+`python -m pip install -e ../../packages/agentcraft2-core -e ../../packages/agentcraft2-cli`.
 
 `install` installs both services and the development tools; `check` runs lint, format, types, the
 tests and the policy samples. Every command below runs from this folder, and works the same in
