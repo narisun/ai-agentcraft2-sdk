@@ -310,22 +310,26 @@ Use this workflow when changing the library itself. Open a terminal at the
 library root. If you followed the quickstart, return there with
 `cd /d "%LIBRARY%"` in Command Prompt or `cd "$LIBRARY"` in bash/zsh.
 
-Select your approved Python, then install the contributor dependencies:
+Select your approved Python, then build and install the SDK with the contributor tools:
 
 ```bat
 rem Windows Command Prompt, from ai-agentcraft2-sdk/
 set "PYTHON=python"
-"%PYTHON%" tools/install_dev.py
+"%PYTHON%" tools/install_sdk.py --dev --editable
 ```
 
 ```bash
 # macOS/Linux, from ai-agentcraft2-sdk/
 PYTHON=python3
-"$PYTHON" tools/install_dev.py
+"$PYTHON" tools/install_sdk.py --dev --editable
 ```
 
-`tools/install_dev.py` uses pip to install the local packages,
-optional dependencies, and development tools. Then run these checks from
+`tools/install_sdk.py` is the one script that builds and installs the SDK. It checks the
+environment, looks for an SDK that is already installed, builds the packages, uninstalls the
+old SDK and only then installs the new one, printing each step as it goes and stopping at the
+first problem. With `--dev --editable` it installs the local packages, optional dependencies
+and development tools. Without options it builds wheels and installs them, as a consumer
+would get them (`--no-index --find-links=...` and other pip options are passed to pip). Then run these checks from
 the library root, replacing `"%PYTHON%"` with `"$PYTHON"` on macOS/Linux:
 
 ```bat

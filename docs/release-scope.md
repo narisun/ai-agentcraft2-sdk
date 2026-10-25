@@ -189,7 +189,7 @@ Ambient task-local side effects are not a dependency-injection interface.
 ## Installation and migration
 
 Use your enterprise-approved Python and pip. Contributors run
-`python tools/install_dev.py`; consumers install the CLI with pip and run
+`python tools/install_sdk.py --dev --editable`; consumers install the CLI with pip and run
 `python -m agentcraft2_cli install` inside a generated workspace. The local
 batch setup keeps agent/MCP, Agent Lab, and Phoenix dependencies in separate
 `.venv` package folders, loaded by the same default Python executable. Pip also
