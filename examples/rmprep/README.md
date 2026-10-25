@@ -44,18 +44,22 @@ The remaining steps cover manual setup and command-line walkthroughs. Manual
 agent commands read `agents/rmprep/.env`; they do not automatically load the
 root `.env` used by the launcher.
 
-Open **Command Prompt** in the library repository. Use Python 3.11 or newer and
-your team's existing pip configuration, including its enterprise package index.
+This folder is a complete `agentcraft2` workspace. Copy it anywhere, or download
+its zip from the repository's Examples workflow, and open **Command Prompt** in the
+copy. Use Python 3.11 or newer and your team's existing pip configuration, including
+its enterprise package index.
 
 ```bat
-python -m pip install -e packages\agentcraft2-core -e packages\agentcraft2-aws -e packages\agentcraft2-cli
-python -m agentcraft2_cli install --workspace examples\rmprep
-cd examples\rmprep
+python -m pip install "agentcraft2-cli>=0.1,<0.2"
+cd rmprep
+ac2 install
 ```
 
-Use the same approved Python for installation and service startup. Run
-the `install` command. That command installs both example services and the
-development tools using the active Python interpreter and pip.
+Use the same approved Python for installation and service startup. The `install`
+command installs both example services and the development tools using the active
+Python interpreter and pip. In a checkout of the SDK repository, install its packages
+first with `python -m pip install -e packages\agentcraft2-core -e packages\agentcraft2-aws
+-e packages\agentcraft2-cli`, then run `ac2 install --workspace examples\rmprep`.
 
 Create local settings once:
 

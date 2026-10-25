@@ -53,6 +53,36 @@ through it, is still future work. Until then the resolver accepts the
 `EAP_PHOENIX_*` names, and the vendor-named `PHOENIX_*` names stay outside the
 "unknown `EAP_` names fail startup" guarantee.
 
+### Amendment, 2026-10-25: Phoenix is for the developer's machine
+
+The Context and the Decision above stay as written; they record the decision
+as it was made. This amendment changes what is in force.
+
+A developer's `.env` can be shared, copied or set by a pipeline, and a trace
+carries conversation metadata. Nothing in the library may therefore send a trace
+to a host the developer did not start. `PHOENIX_COLLECTOR_ENDPOINT` must be an
+`http` origin on `localhost`, `127.0.0.1` or `[::1]`; any other value stops
+startup. `PHOENIX_API_KEY` is no longer read and no `Authorization` header is
+sent, because the local Phoenix takes none. `EAP_PHOENIX_ENV_FILE` and
+`AC2_PHOENIX_ENV_FILE` are no longer read either: the file existed to keep that
+key private. A value still set in a file or the process is told about once, by
+`doctor`, `config explain` and the startup log, without showing it. The
+resolver keeps both names known so that the loader's message, and not an
+unknown-variable failure, is what a developer sees.
+
+Phoenix tracing is refused when the deployment environment is `dev` or `prod`
+(`require_local_tracing`, applied by startup and `doctor`). A deployed service
+reports through its telemetry setting. This also retires the earlier production
+check on content capture, which is now covered because tracing itself is off
+there. `PHOENIX_PROJECT_NAME` defaults to the service's name, so agents do not
+share one project unless a developer sets it. Agent Lab accepts a Phoenix trace
+link only when it is loopback `http`.
+
+The loader now resolves four variables: `AC2_PHOENIX_ENABLED`,
+`AC2_PHOENIX_CAPTURE_CONTENT`, `PHOENIX_COLLECTOR_ENDPOINT` and
+`PHOENIX_PROJECT_NAME`. Registering them in the binding table is still future
+work.
+
 ## Consequences
 
 Langfuse and Phoenix need their variables registered and their loaders

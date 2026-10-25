@@ -31,9 +31,9 @@ def envelope() -> dict[str, Any]:
 
 
 TRACE_ID = "1234567890abcdef1234567890abcdef"
-URL = f"https://traces.example/redirects/traces/{TRACE_ID}"
+URL = f"http://127.0.0.1:6006/redirects/traces/{TRACE_ID}"
 # The route a retired Langfuse integration emitted: no longer a valid trace link.
-LEGACY_URL = f"https://traces.example/project/trial/traces/{TRACE_ID}"
+LEGACY_URL = f"http://127.0.0.1:6006/project/trial/traces/{TRACE_ID}"
 LEGACY_TRACE = {"provider": "langfuse", "trace_id": TRACE_ID, "url": LEGACY_URL}
 
 
@@ -47,6 +47,7 @@ def phoenix(url: str) -> dict[str, str]:
         URL,
         f"http://127.0.0.1:3000/redirects/traces/{TRACE_ID}",
         f"http://[::1]:3000/redirects/traces/{TRACE_ID}",
+        f"http://localhost:6006/redirects/traces/{TRACE_ID}",
     ],
 )
 def test_optional_trace_links_are_correlated_with_accepted_envelope(url: str) -> None:
@@ -69,7 +70,7 @@ def test_optional_trace_links_are_correlated_with_accepted_envelope(url: str) ->
         URL + ")[bad](https://evil.example)",
         URL.replace(TRACE_ID, "0" * 32),
         "https://example.com\n/redirects/traces/" + TRACE_ID,
-        URL.replace("traces.example", "traces.example:70000"),
+        URL.replace("127.0.0.1:6006", "127.0.0.1:70000"),
         "\x00" + URL,
     ],
 )
@@ -92,7 +93,7 @@ def test_legacy_langfuse_trace_never_discards_answer() -> None:
     assert answer == plain
 
 
-@pytest.mark.parametrize("host", ["http://127.0.0.1:6006", "https://phoenix.example"])
+@pytest.mark.parametrize("host", ["http://127.0.0.1:6006", "http://localhost:6006"])
 def test_phoenix_trace_link_is_correlated_and_named(host: str) -> None:
     value = envelope()
     url = f"{host}/redirects/traces/{TRACE_ID}"
@@ -109,6 +110,8 @@ def test_phoenix_trace_link_is_correlated_and_named(host: str) -> None:
     [
         LEGACY_URL,
         f"http://remote.example/redirects/traces/{TRACE_ID}",
+        f"https://phoenix.example/redirects/traces/{TRACE_ID}",
+        f"https://127.0.0.1:6006/redirects/traces/{TRACE_ID}",
         f"http://127.0.0.1:6006/redirects/traces/{TRACE_ID}?token=private",
         f"http://user:secret@127.0.0.1:6006/redirects/traces/{TRACE_ID}",
         "http://127.0.0.1:6006/redirects/traces/" + "0" * 32,
@@ -282,6 +285,9 @@ def test_tolerant_trace_degrades_what_no_longer_validates() -> None:
     assert tolerant_trace(None) is None
     assert tolerant_trace(LEGACY_TRACE) is None
     assert tolerant_trace("not-a-link") is None
-    assert tolerant_trace(phoenix(URL.replace("traces.example", "traces.example:70000"))) is None
+    assert tolerant_trace(phoenix(URL.replace("127.0.0.1:6006", "127.0.0.1:70000"))) is None
+    # A link a release before this one stored for a Phoenix on another host.
+    remote = f"https://phoenix.example/redirects/traces/{TRACE_ID}"
+    assert tolerant_trace(phoenix(remote)) is None
     assert tolerant_trace(phoenix(URL)) == link
     assert tolerant_trace(link) is link

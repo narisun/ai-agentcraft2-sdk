@@ -31,7 +31,7 @@ from agentcraft2_core.config.bindings import (
     validate_bindings,
 )
 from agentcraft2_core.config.home import STATE_FOLDER
-from agentcraft2_core.config.phoenix import PHOENIX_VARIABLES
+from agentcraft2_core.config.phoenix import PHOENIX_VARIABLES, REMOVED_PHOENIX_VARIABLES
 from agentcraft2_core.config.profiles import PROFILE_DEFAULTS, ProfileDefaults
 from agentcraft2_core.contracts import (
     ConfigSource,
@@ -243,8 +243,10 @@ class ConfigResolver:
         known = {name for binding in self._bindings for name in binding.all_names}
         # Optional tracing is resolved by its own loader at the service boundary. Only the
         # library's own names have a second spelling; the vendor's PHOENIX_* names have none, and
-        # inventing AC2_PHOENIX_API_KEY would accept a variable that nothing reads.
-        for name in PHOENIX_VARIABLES:
+        # inventing AC2_PHOENIX_API_KEY would accept a variable that nothing reads. A variable
+        # the tracing loader no longer reads stays known, so that a file that still sets it gets
+        # the loader's message about it and not a startup failure.
+        for name in (*PHOENIX_VARIABLES, *REMOVED_PHOENIX_VARIABLES):
             if name.startswith(PREFIX):
                 known.update(_both_spellings(name))
             else:

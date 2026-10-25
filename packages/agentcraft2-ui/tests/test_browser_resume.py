@@ -122,7 +122,7 @@ async def test_resume_recovers_lost_response_without_another_agent_invocation(
 @pytest.mark.parametrize("mode", ["json", "stream", "reconcile"])
 async def test_trace_link_and_metrics_survive_resume(server: LocalServer, mode: str) -> None:
     trace_id = uuid4().hex
-    url = f"https://traces.example/redirects/traces/{trace_id}"
+    url = f"http://127.0.0.1:6006/redirects/traces/{trace_id}"
     server.trace = {"provider": "phoenix", "trace_id": trace_id, "url": url}
     server.streaming = mode == "stream"
     server.lose_response = mode == "reconcile"

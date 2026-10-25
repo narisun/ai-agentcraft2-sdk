@@ -190,14 +190,40 @@ def door() -> tuple[Echo, httpx.AsyncClient]:
     )
 
 
-async def test_the_door_lets_through_the_perimeters_headers_or_a_bearer(
+async def test_the_door_lets_through_the_perimeters_headers(
     door: tuple[Echo, httpx.AsyncClient],
 ) -> None:
     inner, client = door
     by_perimeter = await client.post("/mcp", headers={USER_ID_HEADER: "user-42"})
-    by_token = await client.post("/mcp", headers={"authorization": "Bearer t"})
-    assert (by_perimeter.status_code, by_token.status_code) == (200, 200)
-    assert inner.reached == ["/mcp", "/mcp"]
+    assert by_perimeter.status_code == 200
+    assert inner.reached == ["/mcp"]
+
+
+async def test_a_bearer_token_does_not_stand_in_for_the_perimeters_headers(
+    door: tuple[Echo, httpx.AsyncClient],
+) -> None:
+    # This identity accepts no bearer token, so one proves nothing about where the request came
+    # from. Before, any value in the header was enough to reach every method but tools/call.
+    inner, client = door
+    for method in ("tools/list", "resources/list", "prompts/list", "initialize"):
+        refused = await client.post(
+            "/mcp",
+            headers={"authorization": "Bearer anything"},
+            json={"jsonrpc": "2.0", "id": 1, "method": method},
+        )
+        assert refused.status_code == 401, method
+        assert refused.json() == perimeter_refused()
+    assert inner.reached == []
+
+
+async def test_the_door_asks_for_every_header_the_perimeter_sets() -> None:
+    inner = Echo()
+    wrapped = PerimeterDoor(inner, required_headers=("x-first", "x-second"))
+    client = httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=wrapped), base_url="http://127.0.0.1:8000"
+    )
+    assert (await client.post("/mcp", headers={"x-first": "1"})).status_code == 401
+    assert (await client.post("/mcp", headers={"x-first": "1", "x-second": "2"})).status_code == 200
 
 
 async def test_the_door_refuses_a_request_the_perimeter_did_not_vouch_for(
@@ -224,17 +250,21 @@ async def test_the_door_leaves_the_health_routes_open(
     assert inner.reached == list(HEALTH_PATHS)
 
 
-async def test_a_door_with_no_required_headers_looks_for_a_bearer_only() -> None:
-    inner = Echo()
-    client = httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=PerimeterDoor(inner, required_headers=())),
-        base_url="http://127.0.0.1:8000",
-    )
-    assert (await client.post("/mcp", headers={USER_ID_HEADER: "u"})).status_code == 401
-    assert (await client.post("/mcp", headers={"authorization": "Bearer t"})).status_code == 200
+def test_a_door_that_looks_for_nothing_is_not_built() -> None:
+    with pytest.raises(ValueError, match="at least one header"):
+        PerimeterDoor(Echo(), required_headers=())
 
 
 # ------------------------------------------------------------ the container
+
+
+async def test_a_perimeter_identity_that_names_no_header_cannot_be_put_behind_a_door() -> None:
+    # Nothing to check would mean everything let through: that is refused, not built.
+    identity = PerimeterIdentity(required_headers=())
+    config = ServiceConfig.for_testing(deployment_env=DeploymentEnv.PROD)
+    async with _fakes(identity).container(config) as services:
+        with pytest.raises(ConfigurationError, match="names no header the perimeter sets"):
+            services.mcp_door(Echo())
 
 
 async def test_the_container_puts_a_perimeter_trusting_identity_behind_the_door() -> None:

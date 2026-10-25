@@ -17,7 +17,7 @@ from agentcraft2_core.config.bindings import (
     SECRET_VARIABLE_PREFIX,
     secret_name,
 )
-from agentcraft2_core.config.phoenix import PHOENIX_VARIABLES
+from agentcraft2_core.config.phoenix import PHOENIX_VARIABLES, REMOVED_PHOENIX_VARIABLES
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PACKAGES = (
@@ -141,6 +141,13 @@ def _variables_a_document_may_name() -> set[str]:
         if phoenix.startswith(PREFIX):
             stem = phoenix.removeprefix(PREFIX)
             known.update({PREFIX + stem, LEGACY_PREFIX + stem})
+    # A variable that is no longer read stays nameable, so that a document can tell what to remove.
+    for removed in REMOVED_PHOENIX_VARIABLES:
+        known.update(
+            {removed, LEGACY_PREFIX + removed.removeprefix(PREFIX)}
+            if removed.startswith(PREFIX)
+            else {removed}
+        )
     # The deployment's own variables belong to the deploy step, not to a service's configuration.
     known.update(variable.name for variable in AGENTCORE_VARIABLES)
     known.add(AGENTCORE_PREFIX.rstrip("_"))

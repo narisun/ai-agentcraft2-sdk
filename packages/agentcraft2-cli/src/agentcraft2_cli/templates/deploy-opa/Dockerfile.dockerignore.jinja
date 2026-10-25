@@ -1,8 +1,15 @@
-# The OPA image needs only the generated policy bundle.
+# The OPA image needs only the generated policy bundle and this workspace's rules.
 **
 !deploy/opa/bundle/**
+!policies/**
+# These exclusions win even inside an admitted folder.
 **/.env
 **/.env.*
 **/*.env
-**/*.key
+**/.agentcraft2/**
+**/*.sqlite*
+**/*.db
+**/*.jsonl
 **/*.pem
+**/*.key
+policies/testdata/rules_corpus.json

@@ -85,9 +85,9 @@ def test_disabled_or_unset_phoenix_needs_no_extra_environment(
 
 @pytest.mark.parametrize(
     "endpoint",
-    ["https://phoenix.example", "http://127.0.0.1:7000", "http://[::1]:6006"],
+    ["http://127.0.0.1:7000", "http://[::1]:6006"],
 )
-def test_external_destination_does_not_start_a_local_server(
+def test_another_local_port_does_not_start_a_local_server(
     checkout: Path, monkeypatch: pytest.MonkeyPatch, endpoint: str
 ) -> None:
     package_runtime.package_folder(checkout, "phoenix").rmdir()
@@ -98,7 +98,20 @@ def test_external_destination_does_not_start_a_local_server(
     assert [s.name for s in start.call_args.args[0]] == ["rmprep-data", "rmprep"]
 
 
-@pytest.mark.parametrize("failure", ["missing_environment", "invalid_flag", "missing_file"])
+def test_a_destination_off_this_machine_stops_startup_before_any_child(
+    checkout: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("PHOENIX_COLLECTOR_ENDPOINT", "https://phoenix.example")
+    start = Mock()
+    monkeypatch.setattr(local_dev, "serve", start)
+    assert local_dev.main(["services"], root=checkout) == 1
+    start.assert_not_called()
+    output = capsys.readouterr().out
+    assert "must be an http origin on this machine" in output
+    assert "phoenix.example" not in output
+
+
+@pytest.mark.parametrize("failure", ["missing_environment", "invalid_flag"])
 def test_invalid_phoenix_setup_fails_before_starting_children(
     checkout: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -111,9 +124,6 @@ def test_invalid_phoenix_setup_fails_before_starting_children(
     elif failure == "invalid_flag":
         monkeypatch.setenv("AC2_PHOENIX_ENABLED", "yes")
         expected = "must be true or false"
-    else:
-        monkeypatch.setenv("AC2_PHOENIX_ENV_FILE", str(checkout / "missing.env"))
-        expected = "missing.env"
     start = Mock()
     monkeypatch.setattr(local_dev, "serve", start)
     assert local_dev.main(["services"], root=checkout) == 1
@@ -123,22 +133,20 @@ def test_invalid_phoenix_setup_fails_before_starting_children(
     assert "root-private-key" not in output
 
 
-@pytest.mark.parametrize("file_owner", ["service", "launcher"])
-def test_separate_settings_file_is_resolved_as_the_agent_would_resolve_it(
-    checkout: Path, monkeypatch: pytest.MonkeyPatch, file_owner: str
+def test_a_variable_that_is_no_longer_read_is_noted_and_its_value_never_shown(
+    checkout: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    (checkout / ".env").write_text("")
-    owner = checkout / (local_dev.AGENT_ENV if file_owner == "service" else ".env")
-    owner.write_text("AC2_PHOENIX_ENV_FILE=phoenix.env\n")
-    base = owner.parent if file_owner == "service" else checkout / local_dev.WORKSPACE
-    (base / "phoenix.env").write_text(
-        "AC2_PHOENIX_ENABLED=true\nPHOENIX_COLLECTOR_ENDPOINT=http://localhost:6006/\n"
+    (checkout / local_dev.AGENT_ENV).write_text(
+        "PHOENIX_API_KEY=service-private-key\nAC2_PHOENIX_ENV_FILE=phoenix.env\n"
     )
-    monkeypatch.chdir(checkout.parent)
     start = Mock()
     monkeypatch.setattr(local_dev, "serve", start)
     assert local_dev.main(["services"], root=checkout) == 0
     assert start.call_args.args[0][0].name == "phoenix"
+    output = capsys.readouterr().out
+    assert "note: PHOENIX_API_KEY is no longer used" in output
+    assert "service-private-key" not in output
+    assert "service-private-key" not in str(start.call_args.args[0][0].environment)
 
 
 @pytest.mark.parametrize("scenario", ["ui", "demo"])
@@ -240,39 +248,7 @@ def test_a_legacy_shell_disable_still_wins_over_an_enabled_root_file(
     assert [s.name for s in start.call_args.args[0]] == ["rmprep-data", "rmprep"]
 
 
-@pytest.mark.parametrize("file_owner", ["service", "launcher"])
-def test_a_legacy_separate_settings_file_is_resolved_as_the_agent_would_resolve_it(
-    checkout: Path, monkeypatch: pytest.MonkeyPatch, file_owner: str
-) -> None:
-    (checkout / ".env").write_text("")
-    owner = checkout / (local_dev.AGENT_ENV if file_owner == "service" else ".env")
-    owner.write_text("EAP_PHOENIX_ENV_FILE=phoenix.env\n")
-    base = owner.parent if file_owner == "service" else checkout / local_dev.WORKSPACE
-    (base / "phoenix.env").write_text(
-        "EAP_PHOENIX_ENABLED=true\nPHOENIX_COLLECTOR_ENDPOINT=http://localhost:6006/\n"
-    )
-    monkeypatch.chdir(checkout.parent)
-    start = Mock()
-    monkeypatch.setattr(local_dev, "serve", start)
-    assert local_dev.main(["services"], root=checkout) == 0
-    assert start.call_args.args[0][0].name == "phoenix"
-
-
-def test_a_legacy_shell_file_path_is_relative_to_the_agent_like_the_canonical_one(
-    checkout: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    (checkout / ".env").write_text("")
-    workspace = checkout / local_dev.WORKSPACE
-    (workspace / "phoenix.env").write_text("AC2_PHOENIX_ENABLED=true\n")
-    monkeypatch.setenv("EAP_PHOENIX_ENV_FILE", "phoenix.env")
-    monkeypatch.chdir(checkout.parent)
-    start = Mock()
-    monkeypatch.setattr(local_dev, "serve", start)
-    assert local_dev.main(["services"], root=checkout) == 0
-    assert start.call_args.args[0][0].name == "phoenix"
-
-
-@pytest.mark.parametrize("variable", ["ENABLED", "ENV_FILE"])
+@pytest.mark.parametrize("variable", ["ENABLED"])
 def test_two_phoenix_spellings_that_disagree_stop_startup_naming_both(
     checkout: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -65,10 +65,6 @@ jobs:
           --cov=agentcraft2_core.contracts --cov=agentcraft2_core.config
           --cov=agentcraft2_core.di --cov=agentcraft2_core.pipeline
           --cov-branch --cov-report=term --cov-fail-under=90
-      - name: Relationship manager example policy samples
-        run: python -m agentcraft2_cli policy test --workspace examples/rmprep
-      - name: Relationship manager data-question example policy samples
-        run: python -m agentcraft2_cli policy test --workspace examples/rmqna
       - name: The developer guide matches the code
         run: python docs/guide/build_guide.py --check
 

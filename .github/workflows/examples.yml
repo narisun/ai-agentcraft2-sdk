@@ -1,0 +1,61 @@
+# The examples are static workspaces, not part of the library's build. This workflow uses each
+# one the way a developer does: take a copy of the folder, install it with agentcraft2, and run
+# agentcraft2's own checks on it, against the library in this checkout. It is not part of the
+# gate in ci.yml, so an example never blocks a change to the library; it tells us when one needs
+# attention. It also builds the zip that a developer downloads.
+name: examples
+
+on:
+  schedule:
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["examples/**", "packages/**", ".github/workflows/examples.yml"]
+  pull_request:
+    paths: ["examples/**", ".github/workflows/examples.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  example:
+    strategy:
+      fail-fast: false
+      matrix:
+        example: [rmprep, rmqna]
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.11", "3.13"]
+        exclude:
+          - os: ubuntu-latest
+            python: "3.13"
+          - os: windows-latest
+            python: "3.11"
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      # The tracked files only, which is what a download holds: no caches, no local settings.
+      - name: Take a copy of the example
+        run: |
+          mkdir "$RUNNER_TEMP/copy"
+          git archive --format=zip --output "$RUNNER_TEMP/example-${{ matrix.example }}.zip" "HEAD:examples/${{ matrix.example }}"
+          python -m zipfile -e "$RUNNER_TEMP/example-${{ matrix.example }}.zip" "$RUNNER_TEMP/copy/${{ matrix.example }}"
+      # The example asks for the published library; the checkout stands in for it here.
+      - run: python -m pip install -e packages/agentcraft2-core -e packages/agentcraft2-aws -e packages/agentcraft2-cli
+      - name: Install the example with agentcraft2
+        working-directory: ${{ runner.temp }}/copy/${{ matrix.example }}
+        run: ac2 install
+      - name: Check the example with agentcraft2
+        working-directory: ${{ runner.temp }}/copy/${{ matrix.example }}
+        run: ac2 check
+      - uses: actions/upload-artifact@v4
+        if: matrix.os == 'ubuntu-latest'
+        with:
+          name: example-${{ matrix.example }}
+          path: ${{ runner.temp }}/example-${{ matrix.example }}.zip

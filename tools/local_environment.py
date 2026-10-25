@@ -5,9 +5,7 @@ from pathlib import Path
 from tools.local_processes import report
 
 
-def agent_environment(
-    service_env: Path, overrides: Path, *, required: bool, working_dir: Path | None = None
-) -> dict[str, str]:
+def agent_environment(service_env: Path, overrides: Path, *, required: bool) -> dict[str, str]:
     """Merge shell > launcher file > service defaults, keeping secrets in the child.
 
     Service defaults stay in the service's own file. Relative configuration paths
@@ -42,7 +40,7 @@ def agent_environment(
         # Python hides DeprecationWarning; the launcher is where an operator first looks.
         log_resolution_warnings(resolution)
         tracing = resolve_phoenix_settings(
-            service_env, environment=MappingConfigSource(environment), working_dir=working_dir
+            service_env, environment=MappingConfigSource(environment)
         )
     except ConfigurationError as error:
         raise ValueError(str(error)) from error
