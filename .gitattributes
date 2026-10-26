@@ -1,0 +1,3 @@
+# The launchers run where they are checked out: a batch file needs CRLF and a shell script LF.
+*.bat text eol=crlf
+*.sh text eol=lf
