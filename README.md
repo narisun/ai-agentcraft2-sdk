@@ -27,12 +27,11 @@ Agent Lab is the browser simulator for testing agents. It runs in a Python envir
 its own, because its chat library (Chainlit) needs MCP 1.x and the agents need MCP 2.x.
 The one-line launchers that used to set this up (`setup-local`, `start-local`,
 `stop-local` and `start-phoenix`) have been removed. Phoenix, the local trace viewer, is
-installed with the SDK and `ac2 services` lists, starts and stops it. Agent Lab will join
-`ac2 services`; until then, follow the
-[Agent Lab package guide](packages/agentcraft2-ui/README.md): it installs Agent Lab, starts
-your agent and its MCP servers, and connects them.
-[Local testing](docs/local-startup.md) has the model settings and the rmprep walkthrough
-with its expected answers.
+installed with the SDK and `ac2 services` lists, starts and stops it, and so it does Agent
+Lab (`ac2 services start lab`, then open `http://127.0.0.1:8765`). Start your agent and its
+MCP servers with `ac2 run`; the [Agent Lab package guide](packages/agentcraft2-ui/README.md)
+has the details. [Local testing](docs/local-startup.md) has the model settings and the rmprep
+walkthrough with its expected answers.
 
 Agents run without Phoenix, and tracing stays off unless you turn it on.
 

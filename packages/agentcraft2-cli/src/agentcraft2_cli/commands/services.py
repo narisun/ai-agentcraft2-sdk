@@ -67,7 +67,7 @@ def _list(ctx: click.Context, tools: Toolbox, workspace: Path | None) -> None:
 
 
 @click.group(
-    short_help="List, start and stop Phoenix, the viewer for traces.",
+    short_help="List, start and stop Phoenix and Agent Lab.",
     invoke_without_command=True,
 )
 @workspace_option
@@ -85,12 +85,13 @@ def services(ctx: click.Context, tools: Toolbox, workspace: Path | None) -> None
     \b
     Services:
       phoenix   the viewer for the traces of your agents (http://127.0.0.1:6006)
+      lab       Agent Lab: chat with your agents in a browser (http://127.0.0.1:8765)
 
     \b
     Examples:
       ac2 services                   what is installed and running
       ac2 services start             start every service and wait until it answers
-      ac2 services start phoenix     start one
+      ac2 services start lab         start one
       ac2 services stop              stop every service
       ac2 logs phoenix               read the log of a service
 
@@ -129,9 +130,9 @@ def start_services(
       ac2 services start             every service
       ac2 services start phoenix     one
     """
-    _, state, sdk = _where(ctx, workspace)
+    root, state, sdk = _where(ctx, workspace)
     for spec in _selected(names):
-        start(spec, state, sdk, tools.services)
+        start(spec, state, sdk, tools.services, workspace=root)
 
 
 @services.command("stop", short_help="Stop services and wait until they have stopped.")

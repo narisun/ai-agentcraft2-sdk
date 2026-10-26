@@ -7,11 +7,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from agentcraft2_cli.logbook import LOG_FOLDER
-from agentcraft2_cli.services import packages
+from agentcraft2_cli.services import lab, packages
 from agentcraft2_cli.workspace import LibrarySource
 
 __all__ = [
     "INSTALLED",
+    "LAB",
     "PHOENIX",
     "SERVICES",
     "Paths",
@@ -80,6 +81,10 @@ class ServiceSpec:
         longest_path: The length of the longest path inside its installed packages, which a
             Windows path limit must leave room for.
         megabytes: About how much disk its installed packages take.
+        prepare: Run before it starts, with the workspace and its paths: writes what the service
+            needs from the workspace. Returns notes to show. ``None`` for a service that needs
+            nothing.
+        after_start: Returns what to tell the person once it answers.
     """
 
     name: str
@@ -90,6 +95,8 @@ class ServiceSpec:
     requirements: Callable[[LibrarySource], list[str]] | None = None
     longest_path: int = 0
     megabytes: int = 0
+    prepare: Callable[[Path, Paths], list[str]] | None = None
+    after_start: Callable[[Path, Paths], list[str]] | None = None
 
     @property
     def url(self) -> str:
@@ -118,5 +125,34 @@ PHOENIX = ServiceSpec(
     megabytes=650,
 )
 
-SERVICES = {spec.name: spec for spec in (PHOENIX,)}
+
+def _lab_requirements(library: LibrarySource) -> list[str]:
+    if library.kind == "path":
+        packages_folder = Path(library.path or "") / "packages"
+        return [
+            "--editable",
+            str(packages_folder / "agentcraft2-core"),
+            "--editable",
+            f"{packages_folder / 'agentcraft2-ui'}[chat]",
+        ]
+    return [f"agentcraft2-ui[chat]{library.version}"]
+
+
+LAB = ServiceSpec(
+    name="lab",
+    title="Agent Lab: chat with your agents in a browser",
+    port=lab.PORT,
+    health_path="/healthz",
+    command=lambda paths: packages.command(
+        paths.installed, "agentcraft2_ui", "serve", "--config", str(lab.config_file(paths))
+    ),
+    requirements=_lab_requirements,
+    # Measured on Agent Lab with Chainlit 2.12.0: 111, under opentelemetry/sdk/metrics; 170 MB.
+    longest_path=115,
+    megabytes=190,
+    prepare=lab.prepare,
+    after_start=lab.after_start,
+)
+
+SERVICES = {spec.name: spec for spec in (PHOENIX, LAB)}
 """Every service, by name, in the order they start."""

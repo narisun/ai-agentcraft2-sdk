@@ -281,9 +281,9 @@ def fake_tools(**changes: object) -> ServiceTools:
     return ServiceTools(**{**defaults, **changes})  # type: ignore[arg-type]
 
 
-def installed(sdk: Path, *, version: str = VERSION) -> Path:
-    """Make Phoenix look installed with the SDK."""
-    folder = installed_dir(sdk, "phoenix")
+def installed(sdk: Path, *, version: str = VERSION, name: str = "phoenix") -> Path:
+    """Make a service (Phoenix unless named) look installed with the SDK."""
+    folder = installed_dir(sdk, name)
     packages_folder = packages.site_packages(folder)
     packages_folder.mkdir(parents=True)
     (packages_folder / bootstrap.MANIFEST).write_text(
@@ -673,6 +673,7 @@ def test_services_say_how_to_start_when_something_is_stopped(
 ) -> None:
     root = make_workspace(tmp_path)
     installed(tmp_path / "sdk")
+    installed(tmp_path / "sdk", name="lab")
     capsys.readouterr()
     assert (
         main(["services", "--workspace", str(root)], toolbox_for_tests(services=fake_tools())) == 0
@@ -713,7 +714,7 @@ def test_services_start_starts_what_the_sdk_installed(
     installed(tmp_path / "sdk")
     tools = toolbox_for_tests(services=fake_tools(launch=writes_running(lambda: root)))
     capsys.readouterr()
-    assert main(["services", "start", "--workspace", str(root)], tools) == 0
+    assert main(["services", "start", "phoenix", "--workspace", str(root)], tools) == 0
     assert "phoenix is ready: http://127.0.0.1:6006" in capsys.readouterr().out
 
 

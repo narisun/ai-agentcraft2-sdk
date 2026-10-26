@@ -73,10 +73,10 @@ CONTROL = (
 )
 """Standard-library only too: it says whether a tool's supervisor is alive."""
 
-SERVICE_NAMES = ("phoenix",)
+SERVICE_NAMES = ("phoenix", "lab")
 """The tools installed with the SDK."""
 SERVICE_LONGEST_PATH = 150
-SERVICE_MEGABYTES = 650
+SERVICE_MEGABYTES = 840
 """What the tools need; a test compares them with ``ServiceSpec.longest_path`` and ``megabytes``."""
 WINDOWS_PATH_LIMIT = 259
 INSTALLED_RECORD = "installed.json"
@@ -242,7 +242,7 @@ def check_tools_folder(sdk: Path) -> list[str]:
             f"the folder for the SDK's tools is not on a local disk: {reason}",
             "set AC2_SDK_PATH to a folder on a local disk, such as C:\\ac2-sdk",
         )
-    folder = sdk / "services" / SERVICE_NAMES[0] / "lib"
+    folder = sdk / "services" / max(SERVICE_NAMES, key=len) / "lib"
     needed = len(str(folder)) + 1 + SERVICE_LONGEST_PATH
     if sys.platform == "win32" and needed > WINDOWS_PATH_LIMIT:
         raise SetupError(

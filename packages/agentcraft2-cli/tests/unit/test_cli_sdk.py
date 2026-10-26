@@ -13,7 +13,13 @@ from agentcraft2_cli import sdk as installer
 from agentcraft2_cli.errors import CliError
 from agentcraft2_cli.services import bootstrap, packages
 from agentcraft2_cli.services.installed import check_path_length, installed_problem
-from agentcraft2_cli.services.registry import INSTALLED, PHOENIX, installed_dir
+from agentcraft2_cli.services.registry import (
+    INSTALLED,
+    LAB,
+    PHOENIX,
+    SERVICES,
+    installed_dir,
+)
 from agentcraft2_cli.workspace import LibrarySource
 
 CHECKOUT = LibrarySource(kind="path", path="/work/sdk")
@@ -46,7 +52,7 @@ def install(sdk: Path, library: LibrarySource = CHECKOUT, **changes: object) -> 
 def test_phoenix_is_installed_into_its_own_folder_with_a_record_of_the_sdk(tmp_path: Path) -> None:
     asked: list[Sequence[str]] = []
     said: list[str] = []
-    install(tmp_path / "sdk", pip=writes_packages(asked), say=said.append)
+    install(tmp_path / "sdk", pip=writes_packages(asked), say=said.append, specs=[PHOENIX])
     folder = installed_dir(tmp_path / "sdk", "phoenix")
     assert said == [f"Installing phoenix into {folder}", "  phoenix installed"]
     assert asked[0][-2] == "--editable"
@@ -63,6 +69,14 @@ def test_from_an_index_the_requirement_is_the_version_the_workspace_asks_for(
     asked: list[Sequence[str]] = []
     install(tmp_path / "sdk", INDEX, pip=writes_packages(asked))
     assert asked[0][-1] == "agentcraft2-phoenix[viewer]>=0.1,<0.2"
+
+
+def test_agent_lab_is_installed_beside_phoenix_with_the_sdk_it_needs(tmp_path: Path) -> None:
+    asked: list[Sequence[str]] = []
+    install(tmp_path / "sdk", pip=writes_packages(asked))
+    lab = next(call for call in asked if call[-1].endswith("agentcraft2-ui[chat]"))
+    assert lab.count("--editable") == 2
+    assert installed_problem(LAB, installed_dir(tmp_path / "sdk", "lab")) is None
 
 
 def test_a_folder_that_is_not_on_a_local_disk_is_refused_before_anything_is_installed(
@@ -85,7 +99,8 @@ def test_a_folder_that_is_not_on_a_local_disk_is_refused_before_anything_is_inst
 def test_not_enough_room_is_refused_with_both_numbers(tmp_path: Path) -> None:
     with pytest.raises(CliError, match="not enough room") as caught:
         install(tmp_path / "sdk", free_space=lambda folder: 100 * 1024 * 1024)
-    assert "975 MB free" in (caught.value.expected or "")
+    needed = int(sum(spec.megabytes for spec in SERVICES.values()) * 1.5)
+    assert f"{needed} MB free" in (caught.value.expected or "")
     assert "100 MB free" in (caught.value.actual or "")
 
 

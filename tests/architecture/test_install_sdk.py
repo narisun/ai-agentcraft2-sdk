@@ -160,6 +160,8 @@ def environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         install_sdk, "pip", lambda *_, **__: completed(stdout="pip 24.2 from somewhere\n")
     )
     monkeypatch.delenv("PYTHONPATH", raising=False)
+    # Never the developer's own SDK folder: a tool running there would stop these tests.
+    monkeypatch.setenv("AC2_SDK_PATH", str(tmp_path / "sdk"))
 
 
 @pytest.mark.usefixtures("environment")
@@ -372,7 +374,7 @@ def test_what_a_stopped_uninstall_left_is_found_by_name(site_packages: Path) -> 
 @pytest.mark.usefixtures("environment")
 def test_the_check_warns_about_a_leftover_and_says_how_to_delete_it(site_packages: Path) -> None:
     (site_packages / "~gentcraft2_cli-0.1.0.dist-info").mkdir()
-    lines = install_sdk.check_environment(arguments(), [])
+    lines = install_sdk.check_environment(arguments(no_services=True), [])
     (warning,) = [line for line in lines if line.startswith("warning:")]
     assert "~gentcraft2_cli-0.1.0.dist-info" in warning
     assert "interrupted uninstall" in warning
@@ -382,7 +384,7 @@ def test_the_check_warns_about_a_leftover_and_says_how_to_delete_it(site_package
 @pytest.mark.usefixtures("environment")
 def test_no_warning_without_a_leftover(site_packages: Path) -> None:
     del site_packages
-    lines = install_sdk.check_environment(arguments(), [])
+    lines = install_sdk.check_environment(arguments(no_services=True), [])
     assert not [line for line in lines if line.startswith("warning:")]
 
 
@@ -580,7 +582,7 @@ def test_a_folder_without_room_is_refused_with_both_numbers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     tools_folder(monkeypatch, _Disks(free=200 * 1024 * 1024))
-    with pytest.raises(install_sdk.SetupError, match="200 MB free, about 975 MB needed"):
+    with pytest.raises(install_sdk.SetupError, match="200 MB free, about 1260 MB needed"):
         install_sdk.check_tools_folder(Path("C:/sdk"))
 
 

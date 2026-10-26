@@ -182,8 +182,17 @@ def start(
     sdk: Path,
     tools: ServiceTools | None = None,
     say: Callable[[str], None] = click.echo,
+    workspace: Path | None = None,
 ) -> None:
     """Start a service installed with the SDK, in the background, and wait until it answers.
+
+    Args:
+        spec: The service.
+        state: The workspace's state folder.
+        sdk: The SDK's own folder.
+        tools: What reaches outside the process; a test passes its own.
+        say: Where progress goes.
+        workspace: The workspace root, for a service that is configured from the workspace.
 
     Raises:
         CliError: At the first problem, with what to do about it.
@@ -234,6 +243,9 @@ def start(
             ),
         )
     paths.data.mkdir(parents=True, exist_ok=True)
+    if spec.prepare is not None and workspace is not None:
+        for note in spec.prepare(workspace, paths):
+            say(note)
     shutil.rmtree(paths.run, ignore_errors=True)
     paths.run.mkdir(parents=True)
     (paths.run / SPEC).write_text(
@@ -261,6 +273,9 @@ def start(
         encoding="utf-8",
     )
     say(f"{spec.name} is ready: {spec.url}")
+    if spec.after_start is not None and workspace is not None:
+        for line in spec.after_start(workspace, paths):
+            say(line)
 
 
 def _wait_until_up(spec: ServiceSpec, paths: Paths, tools: ServiceTools) -> None:

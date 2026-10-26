@@ -8,11 +8,32 @@ connects to agents over HTTP.
 Install it with the Python package `agentcraft2-ui`; commands continue to use
 `agentcraft2_ui`. It runs in a Python environment of its own, apart from your agents'.
 
+## The short way: `ac2 services`
+
+In a workspace made with `ac2`, the SDK's installer (`python tools/install_sdk.py`) installs Agent
+Lab in a folder of its own, and `ac2` starts it:
+
+```bat
+ac2 run calc-tools --port 8100       # your MCP servers and agents, each in its own window
+ac2 run calc-agent --port 8000
+ac2 services start lab               # configures itself from the workspace, then starts
+type .agentcraft2\services\lab\data\access-code
+```
+
+Open `http://127.0.0.1:8765` (not `localhost`), enter the code, and choose **Choose agent**.
+`ac2 services start lab` writes Agent Lab's configuration from the agents of the workspace and the
+address each has in `registry/agents.yaml` every time it starts, so a change to the registry is
+picked up and conversations are kept. `ac2 services stop lab` stops it, `ac2 logs lab` reads its
+log. Start Phoenix too (`ac2 services start phoenix`) and each answer links to its trace. See
+[the `ac2` reference](../../docs/cli.md#services).
+
+## The manual way
+
 To test the included rmprep agent, follow the
 [local startup and testing guide](../../docs/local-startup.md). It covers the
 model settings, access code and sample questions. The instructions below start
-Agent Lab and connect it to an agent, rmprep or **your own**. `ac2 services` already
-starts and stops Phoenix; Agent Lab will join it.
+Agent Lab by hand and connect it to an agent, rmprep or **your own**: use them
+without `ac2`, or to see what `ac2 services start lab` does for you.
 
 Use steps 1–4 below to connect your own agents. After your first chat, see
 [responses and inspection](#responses-and-inspection), [memos](#memos-beside-chat),
