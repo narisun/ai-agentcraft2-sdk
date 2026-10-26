@@ -438,8 +438,11 @@ def test_the_pin_command_writes_what_the_server_reports(workspace: Path) -> None
     report = Scaffolder(pin_reader=reader, formatter=as_written).pin(workspace, "hello")
     assert asked == [("mcp-servers/hello-mcp", "hello_mcp")]
     assert [path.name for path in report.updated] == ["mcp-tools.yaml"]
-    greet, people = read_servers(workspace)[0].tools
-    assert (greet.schema_sha256, people.schema_sha256) == ("ab" * 32, None)
+    greet, unknown = read_servers(workspace)[0].tools
+    # The tool the server offers is kept and pinned, the one it reports and the registry lacks
+    # is added, and the sample tool it no longer offers is dropped.
+    assert (greet.name, greet.schema_sha256) == ("hello.greet", "ab" * 32)
+    assert (unknown.name, unknown.schema_sha256) == ("hello.unknown", "cd" * 32)
 
 
 def test_a_workspace_is_generated_again_from_its_answers_alone(tmp_path: Path) -> None:
@@ -506,6 +509,29 @@ def test_new_mcp_pins_the_tools_and_registry_pin_does_it_again(
     assert run("registry", "pin", "hello", "--workspace", workspace, tools=pinned(pins)) == 0
     assert "updated  registry/mcp-tools.yaml" in capsys.readouterr().out
     assert read_servers(workspace)[0].tools[0].schema_sha256 == "ef" * 32
+
+
+def test_registry_pin_registers_the_tools_the_server_offers_and_drops_the_rest(
+    workspace: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    pins = {"hello.greet": "ab" * 32, "hello.people_by_team": "cd" * 32}
+    assert run("new", "mcp", "hello-mcp", "--workspace", workspace, tools=pinned(pins)) == 0
+    capsys.readouterr()
+
+    # The developer replaces the sample tools: one is renamed, one stays, one is new.
+    offered = {"hello.greet": "ab" * 32, "hello.add": "12" * 32}
+    assert run("registry", "pin", "hello", "--workspace", workspace, tools=pinned(offered)) == 0
+    captured = capsys.readouterr()
+    assert "added    hello.add" in captured.err
+    assert "dropped  hello.people_by_team" in captured.err
+    tools = {tool.name: tool for tool in read_servers(workspace)[0].tools}
+    assert list(tools) == ["hello.greet", "hello.add"]
+    assert tools["hello.add"].schema_sha256 == "12" * 32
+    assert tools["hello.greet"].description  # the generated description is kept
+
+    # Run again: nothing is left to do.
+    assert run("registry", "pin", "hello", "--workspace", workspace, tools=pinned(offered)) == 0
+    assert "nothing to do" in capsys.readouterr().out
 
 
 def test_a_server_that_cannot_be_pinned_yet_is_still_created(

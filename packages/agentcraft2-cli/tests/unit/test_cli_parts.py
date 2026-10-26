@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path, PurePosixPath
 
 import jinja2
@@ -21,6 +22,7 @@ from agentcraft2_cli.shared import (
     read_agents,
     read_servers,
     rules_text,
+    synced,
     tools_text,
 )
 from agentcraft2_cli.workspace import (
@@ -270,6 +272,28 @@ SERVER = ServerEntry(
 )
 AGENT = AgentEntry(id="hello-agent", owner="team", version="0.1.0", mcp_servers=("hello",))
 RULE = {"id": "hello-agent-uses-its-models", "actions": ["model.route"], "resources": ["default"]}
+
+
+def test_syncing_a_server_adds_what_it_offers_and_drops_what_it_stopped_offering() -> None:
+    old = "ab" * 32
+    new = "cd" * 32
+    entry, added, dropped = synced(SERVER, {"hello.add": old, "hello.divide": new})
+    assert (added, dropped) == (["hello.add", "hello.divide"], ["hello.greet"])
+    assert [tool.name for tool in entry.tools] == ["hello.add", "hello.divide"]
+    # What is not known about a new tool is set to the safe side, for the developer to change.
+    first = entry.tools[0]
+    assert (first.version, first.classification.name, first.read_only) == (
+        "0.1.0",
+        "CONFIDENTIAL",
+        False,
+    )
+    assert first.schema_sha256 == old
+
+
+def test_syncing_keeps_what_the_developer_set_on_a_tool_that_is_still_offered() -> None:
+    entry, added, dropped = synced(SERVER, {"hello.greet": "ab" * 32})
+    assert (added, dropped) == ([], [])
+    assert entry.tools == (replace(SERVER.tools[0], schema_sha256="ab" * 32),)
 
 
 def test_the_registries_round_trip_through_their_files(tmp_path: Path) -> None:

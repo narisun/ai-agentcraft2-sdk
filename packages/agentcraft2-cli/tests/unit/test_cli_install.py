@@ -86,6 +86,38 @@ def test_the_command_hands_pip_only_the_workspace(workspace: Path) -> None:
     assert editables(ran[0]) == ["helper"]
 
 
+def test_pip_is_quiet_unless_asked_and_the_command_says_what_it_installed(
+    workspace: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    ran: list[Sequence[str]] = []
+
+    def run(module: str, arguments: Sequence[str], folder: Path) -> int:
+        ran.append(arguments)
+        return 0
+
+    tools = toolbox_for_tests(pins={}, run_tool=run)
+    capsys.readouterr()
+    assert main(["install", "--workspace", str(workspace)], tools) == 0
+    out = capsys.readouterr().out
+    assert ran[0][:3] == ("install", "-q", "--disable-pip-version-check")
+    assert "Installing helper, the development tools with pip, quietly" in out
+    assert "Installed. Next:" in out
+    assert "check" in out
+
+    assert main(["install", "--verbose", "--workspace", str(workspace)], tools) == 0
+    assert "-q" not in ran[1]
+    assert "quietly" not in capsys.readouterr().out
+
+
+def test_a_failed_install_says_how_to_see_pips_output(
+    workspace: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    tools = toolbox_for_tests(pins={}, run_tool=lambda module, arguments, folder: 1)
+    capsys.readouterr()
+    assert main(["install", "--workspace", str(workspace)], tools) == 1
+    assert "install --verbose" in capsys.readouterr().err
+
+
 def test_the_help_says_what_it_installs_and_what_it_does_not(
     capsys: pytest.CaptureFixture[str],
 ) -> None:

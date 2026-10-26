@@ -27,11 +27,22 @@ CHECKS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
 @click.command()
 @click.option("--opa", "with_opa", is_flag=True, help="Also check that OPA agrees with the rules.")
 @click.option("--keep-going", is_flag=True, help="Run every check even after one fails.")
+@click.option(
+    "--fix",
+    "fix_first",
+    is_flag=True,
+    help="First fix what ruff can: lint fixes and formatting. Review the changes it makes.",
+)
 @workspace_option
 @click.pass_context
 @pass_toolbox
 def check(
-    tools: Toolbox, context: click.Context, with_opa: bool, keep_going: bool, workspace: Path | None
+    tools: Toolbox,
+    context: click.Context,
+    with_opa: bool,
+    keep_going: bool,
+    fix_first: bool,
+    workspace: Path | None,
 ) -> None:
     """Run what CI runs: lint, format, types, tests and the policy samples.
 
@@ -39,6 +50,11 @@ def check(
     workflow, so a change that passes here passes there.
     """
     root = workspace_root(workspace)
+    if fix_first:
+        for fixing in (("check", "--fix", "."), ("format", ".")):
+            click.echo(f"== fix: python -m ruff {' '.join(fixing)}")
+            # What ruff cannot fix is reported by the checks below.
+            tools.run_tool("ruff", fixing, root)
     results: list[tuple[str, bool]] = []
     for name, module, arguments in CHECKS:
         click.echo(f"== {name}: python -m {module} {' '.join(arguments)}".rstrip())
@@ -60,9 +76,23 @@ def check(
         click.echo(f"  {'ok  ' if passed else 'FAIL'}  {name}")
     failed = [name for name, passed in results if not passed]
     if failed:
+        skipped = [name for name, *_ in CHECKS if name not in {done for done, _ in results}]
+        if not keep_going:
+            skipped.append("policy samples")  # they run only when nothing before them failed
+        fix = "read the output of each failed check above"
+        if skipped:
+            fix += (
+                f"; {', '.join(skipped)} did not run: add --keep-going to run every check"
+                " after a failure"
+            )
+        fix += (
+            "; for lint and format problems, add --fix to let ruff correct them"
+            if {"lint", "format"} & set(failed)
+            else ""
+        )
         raise CliError(
             f"{len(failed)} check{'s' if len(failed) != 1 else ''} failed: {', '.join(failed)}",
-            fix="read the output of each failed check above; run it alone to iterate",
+            fix=fix,
         )
     click.echo("Every check passed.")
 

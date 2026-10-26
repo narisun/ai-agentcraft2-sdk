@@ -309,7 +309,13 @@ def registry() -> None:
 @workspace_option
 @pass_toolbox
 def registry_pin(tools: Toolbox, server: str, workspace: Path | None) -> None:
-    """Pin the input schema of every tool of the MCP server SERVER."""
+    """Register the tools of the MCP server SERVER as the server offers them, and pin them.
+
+    A tool the server offers that the registry lacks is added (confidential and not
+    read-only: set its classification, read-only flag and description in
+    registry/mcp-tools.yaml). A registered tool the server no longer offers is dropped.
+    Every tool's input schema is pinned.
+    """
     root = workspace_root(workspace)
     report = tools.scaffolder().pin(root, server)
     click.echo(f"Pins of {server}")
