@@ -471,6 +471,15 @@ def test_a_samples_file_that_is_wrong_is_refused(
         samples_text(text, [{**new, "expect": "allow"}])
 
 
+def test_a_new_workspace_has_no_samples_yet_and_that_is_not_a_failure(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert run("init", "demo", "--dir", tmp_path, "--owner", "demo-team") == 0
+    capsys.readouterr()
+    assert run("policy", "test", "--workspace", tmp_path / "demo") == 0
+    assert "No samples yet" in capsys.readouterr().out
+
+
 def test_without_samples_or_a_bundle_the_command_says_so(
     workspace: Path, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:

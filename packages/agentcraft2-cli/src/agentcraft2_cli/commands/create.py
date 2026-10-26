@@ -14,6 +14,7 @@ from agentcraft2_cli.commands.common import (
     pass_toolbox,
     port_of,
     print_report,
+    program_name,
     workspace_option,
     workspace_root,
 )
@@ -94,13 +95,15 @@ def init(
     report = tools.scaffolder().init(root, answers, force=force)
     click.echo(f"Workspace {answers.name} at {root}")
     print_report(report, root)
+    program = program_name()
     click.echo(
         "\nNext:\n"
         f"  cd {root}\n"
-        "  python -m agentcraft2_cli install\n"
-        "  python -m agentcraft2_cli new mcp hello-mcp\n"
-        "  python -m agentcraft2_cli new agent hello-agent --mcp hello\n"
-        "  python -m agentcraft2_cli install && python -m pytest"
+        f'  {program} new mcp hello-mcp --description "What the server offers"\n'
+        f'  {program} new agent hello-agent --mcp hello --description "What the agent does"'
+        " --model fake\n"
+        f"  {program} install\n"
+        f"  {program} check"
     )
 
 
@@ -154,15 +157,16 @@ def new_agent(
     click.echo(f"Agent {agent.name} in {AGENTS_FOLDER}/{agent.name}")
     print_report(report, root)
     linked = [answers.mcp_server(name) for name in mcp_servers]
+    program = program_name()
     start = "".join(
-        f"  {server.name}        # in another terminal: the agent calls it\n"
+        f"  {program} run {server.name}        # in another terminal: the agent calls it\n"
         for server in linked
         if server is not None
     )
     click.echo(
         "\nNext:\n"
-        "  python -m agentcraft2_cli install\n"
-        f"  python -m pytest {AGENTS_FOLDER}/{agent.name}\n"
+        f"  {program} install\n"
+        f"  {program} check\n"
         f'{start}  {agent.name} "Say hello to Ada."'
     )
 
@@ -270,7 +274,7 @@ def new_mcp(
     print_report(created.report, root)
     if created.pin_note is not None:
         click.echo(created.pin_note, err=created.not_pinned is not None)
-    click.echo("\nNext:\n" + "\n".join(f"  {step}" for step in created.next_steps))
+    click.echo("\nNext:\n" + "\n".join(f"  {step}" for step in created.next_steps(program_name())))
 
 
 @click.command()
@@ -289,8 +293,9 @@ def link(tools: Toolbox, agent: str, server: str, force: bool, workspace: Path |
     linked = answers.mcp_server(server)
     if linked is not None:
         click.echo(
-            f"\nFrom now on {agent} needs {linked.name} running: {linked.name}\n"
-            "The tests need nothing running: python -m pytest tests"
+            f"\nFrom now on {agent} needs {linked.name} running: "
+            f"{program_name()} run {linked.name}\n"
+            f"The tests need nothing running: {program_name()} check"
         )
 
 

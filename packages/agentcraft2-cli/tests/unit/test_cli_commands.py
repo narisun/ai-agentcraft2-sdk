@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -170,13 +171,36 @@ def test_init_again_changes_nothing_and_keeps_what_was_added(
 # ---------------------------------------------------------------------- services
 
 
+@pytest.mark.parametrize(
+    ("invoked", "program"),
+    [
+        ("C:/Python/Scripts/ac2.exe", "ac2"),
+        ("/usr/local/bin/agentcraft2", "agentcraft2"),
+        ("C:/Python/Lib/site-packages/agentcraft2_cli/__main__.py", "python -m agentcraft2_cli"),
+    ],
+)
+def test_what_a_command_suggests_next_uses_the_name_it_was_run_by(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+    invoked: str,
+    program: str,
+) -> None:
+    monkeypatch.setattr(sys, "argv", [invoked])
+    assert run("init", "demo", "--dir", tmp_path, "--owner", "team") == 0
+    out = capsys.readouterr().out
+    assert f"{program} new mcp hello-mcp" in out
+    assert f"{program} check" in out
+    assert f"{program} install" in out
+
+
 def test_new_mcp_adds_a_server_registers_it_and_adds_its_rules(
     workspace: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     assert run("new", "mcp", "hello-mcp", "--no-pin", "--workspace", workspace) == 0
     out = capsys.readouterr().out
     assert "MCP server hello-mcp (registry ID hello)" in out
-    assert "python -m pytest mcp-servers/hello-mcp" in out
+    assert "python -m agentcraft2_cli run hello-mcp" in out
     files = tree(workspace)
     service = "mcp-servers/hello-mcp/"
     assert {name.removeprefix(service) for name in files if name.startswith(service)} == {

@@ -65,6 +65,12 @@ def policy_test(
     answers = load_answers(root)
     samples = load_samples(root.joinpath(*SAMPLES_FILE.parts))
     if not samples:
+        if not (answers.agents or answers.mcp_servers):
+            # A new workspace has no service whose rules could be tried yet.
+            click.echo(
+                "No samples yet: adding an agent or an MCP server writes samples for its rules."
+            )
+            return
         raise CliError(f"{SAMPLES_FILE} holds no samples")
     by_rules = asyncio.run(decide_samples(samples, rules_engine(root.joinpath(*RULES_FILE.parts))))
     # Sample names are distinct (the samples file refuses a repeated one), so a sample that

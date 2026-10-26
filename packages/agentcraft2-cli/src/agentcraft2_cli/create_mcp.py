@@ -59,13 +59,16 @@ class McpCreated:
             )
         return None
 
-    @property
-    def next_steps(self) -> list[str]:
-        """What to do next, one command per line."""
+    def next_steps(self, program: str) -> list[str]:
+        """What to do next, one command per line.
+
+        Args:
+            program: How the person ran the command, to suggest the commands the same way.
+        """
         return [
-            "python -m agentcraft2_cli install",
-            f"python -m pytest {SERVERS_FOLDER}/{self.server.name}",
-            self.server.name,
+            f"{program} install",
+            f"{program} check",
+            f"{program} run {self.server.name}",
         ]
 
 
