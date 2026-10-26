@@ -12,7 +12,7 @@ Choose the path that matches your task:
 
 | I want to… | Start here | What I will have |
 | --- | --- | --- |
-| Test an existing agent in a browser | [Run Agent Lab](#run-agent-lab) | rmprep, its MCP server, chat, memo versions, and trace links |
+| Test an existing agent in a browser | [Run Agent Lab](#run-agent-lab) | rmprep, its MCP server, chat and memo versions |
 | Build my first agent | [Run your first agent](#run-your-first-agent), then the [tutorial](docs/getting-started.md) | A generated Python workspace with runnable code and tests |
 | Understand the design | [Developer guide: principles](docs/developer-guide.html#principles) | How LangGraph, interfaces, dependency injection, and environment providers fit together |
 | Change the library or simulator | [Working on the library](#working-on-the-library) and the [code map](docs/README.md#find-the-code) | The right package, environment, and checks for a change |
@@ -23,89 +23,19 @@ development preview; use the [release scope](docs/release-scope.md) for support 
 
 ## Run Agent Lab
 
-Agent Lab is the browser simulator for testing agents. Use your team's Python
-3.11+ and pip setup, approved package index, and a writable repository checkout.
-Open **Command Prompt** (Windows) or a **Bash terminal** (macOS/Linux) in the repository root.
-Commands are shown for Command Prompt. On macOS/Linux, run the `.sh` launcher with
-the same name and arguments, for example `./setup-local.sh --dev` for
-`setup-local.bat --dev`.
+Agent Lab is the browser simulator for testing agents. It runs in a Python environment of
+its own, because its chat library (Chainlit) needs MCP 1.x and the agents need MCP 2.x.
+The one-line launchers that used to set this up (`setup-local`, `start-local`,
+`stop-local` and `start-phoenix`) have been removed, and `ac2 services` is
+the planned replacement for starting and stopping Agent Lab and Phoenix. Until it
+is released, follow the [Agent Lab package guide](packages/agentcraft2-ui/README.md): it
+installs Agent Lab, starts your agent and its MCP servers, and connects them.
+[Local testing](docs/local-startup.md) has the model settings and the rmprep walkthrough
+with its expected answers.
 
-**First time:** follow [local setup and model settings](docs/local-startup.md#1-set-up-once).
-Use `setup-local.bat --model anthropic` or `setup-local.bat --model bedrock`,
-then configure the selected provider in the root `.env`. If that file already
-selects your model, `setup-local.bat` detects it. Phoenix tracing is optional.
-
-All services use the same approved Python. Agent/MCP, Agent Lab, and Phoenix keep
-separate `.venv` package folders. The launchers use the default Python and its
-pip module, rather than executables inside those folders. The generated
-`fake` model echoes questions for a basic connectivity check.
-Setup installs runtime packages. Use `setup-local.bat --dev` to also install
-the scaffolding CLI and the rmprep/Agent Lab development tools.
-
-**Optional: enable Phoenix traces.** Install its packages once with the same
-default Python and pip:
-
-```bat
-start-phoenix.bat setup
-```
-
-Add these settings to the root `.env`, keeping your model settings and API key:
-
-```dotenv
-AC2_TELEMETRY=off
-AC2_PHOENIX_ENABLED=true
-AC2_PHOENIX_CAPTURE_CONTENT=true
-PHOENIX_COLLECTOR_ENDPOINT=http://127.0.0.1:6006
-PHOENIX_PROJECT_NAME=rmprep-trial
-```
-
-Content capture records model messages and tool results; use approved test data.
-`start-local.bat` will start Phoenix at <http://127.0.0.1:6006> and keep traces in
-local SQLite storage. The pinned Phoenix 20.21.1 can print a SQLAlchemy
-`Column-expression-level unary distinct()` warning; it is left visible and does not
-block tracing ([details](docs/phoenix-trial.md#remaining-upstream-warning)). Follow the
-[Phoenix guide recipe](docs/developer-guide.html#phoenix-local) to check a
-conversation. The [verified three-turn run](docs/phoenix-trial.md#verified-local-run-october-16-2026)
-confirmed Anthropic follow-ups, MCP calls, metrics and checkpoints.
-
-**Each testing session:**
-
-```bat
-start-local.bat
-```
-
-Check the printed environment path, model and masked settings. Wait for **All
-selected services are ready**, then open [Agent Lab](http://127.0.0.1:8765).
-Read its login code in a second Command Prompt or Bash terminal at the repository
-root (on macOS/Linux, `cat .agentcraft2/ui-rmprep/access-code`):
-
-```bat
-type .agentcraft2\ui-rmprep\access-code
-```
-
-Select **Choose agent → Start chat with rmprep**. With Anthropic configured, ask:
-
-1. `Prepare a meeting memo for Jones Dairy Farm (JONE-0022) as of 2026-08-03.`
-2. In the same chat: `Explain the covenant breaches and cash conversion cycle change. How was its wallet share calculated? Use the saved evidence.`
-
-Text streams into a provisional draft, then the final answer shows token usage
-and response time. **Memos** opens saved versions beside chat. With Phoenix enabled,
-**Open trace in Agent Lab** opens the response's model input/output, MCP calls,
-metrics and checkpoint references. **Logs** provides local diagnostic inspection.
-
-When finished, run in the second Command Prompt or Bash terminal:
-
-```bat
-stop-local.bat
-```
-
-Wait for **Stopped gracefully**. Conversations, memo versions, traces and
-checkpoints remain available next time you start. Restart after changing code
-or settings. Ctrl+C in the launcher window also stops its stack.
-
-The [local testing guide](docs/local-startup.md) includes expected answers, client
-switching, older memos, startup checks and troubleshooting. To connect your own
-agent, use the [Agent Lab package guide](packages/agentcraft2-ui/README.md).
+Phoenix, the local trace viewer, has no start command in this checkout until
+`ac2 services` is released. Agents run without it, and tracing stays off unless you
+turn it on.
 
 ## Run your first agent
 

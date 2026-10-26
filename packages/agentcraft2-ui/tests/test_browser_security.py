@@ -1,38 +1,12 @@
-"""Sign-in, origin and parent-session guards on the real UI server, and launcher probes."""
+"""Sign-in, origin and parent-session guards on the real UI server."""
 
-import subprocess
-from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 import httpx
 import pytest
 from browser_protocol import LocalServer
-from python_runtime import python_command
 
 pytestmark = pytest.mark.slow
-
-
-def test_launcher_health_probes_do_not_reset_ui_connections(server: LocalServer) -> None:
-    root = Path(__file__).resolve().parents[3]
-    log = server.path / "server.log"
-    before = log.stat().st_size
-    probe = (
-        f"import sys; sys.path.insert(0, {str(root)!r}); "
-        "from pathlib import Path; "
-        "from tools.local_processes import Service, is_ready; "
-        f"service = Service('ui', (), Path.cwd(), {server.port}, '/healthz'); "
-        "assert all(is_ready(service) for _ in range(40))"
-    )
-    result = subprocess.run(  # noqa: S603 - exercise our launcher with this test's server
-        python_command("-c", probe), capture_output=True, text=True, check=False, timeout=20
-    )
-    assert result.returncode == 0, result.stdout + result.stderr
-    # Let the same server handle another request before inspecting its callback errors.
-    with httpx.Client(trust_env=False) as client:
-        assert client.get(server.origin + "/healthz").json() == {"status": "ok"}
-    output = log.read_bytes()[before:].decode("utf-8")
-    assert "ConnectionResetError" not in output, output
-    assert "_call_connection_lost" not in output, output
 
 
 async def test_parent_session_guards_all_mounted_routes_and_origin(server: LocalServer) -> None:

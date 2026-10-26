@@ -211,14 +211,13 @@ The [developer guide's configuration table](../../../docs/developer-guide.html#v
 lists each setting's purpose and local/AWS usage. The same variables work as
 environment settings on the agent's Fargate task. These are rmprep settings;
 other agents keep their own context policies. Process variables override `.env`.
-For a temporary Command Prompt override before starting the batch script:
+For a temporary Command Prompt override before starting the agent from that same prompt:
 
 ```bat
 set "RMPREP_CONTEXT_RECENT_TOKENS=96000"
-start-local.bat
 ```
 
-Run the batch script from the library repository root. To check the resolved
+To check the resolved
 values in the Python environment where rmprep is installed:
 
 ```bat

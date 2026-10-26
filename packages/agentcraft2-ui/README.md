@@ -6,12 +6,13 @@ Agent Lab is a local workspace for testing registered agents through chat and
 inspecting how each response was produced. It uses Chainlit for chat and
 connects to agents over HTTP.
 Install it with the Python package `agentcraft2-ui`; commands continue to use
-`agentcraft2_ui`. The repository launcher supplies its isolated package path.
+`agentcraft2_ui`. It runs in a Python environment of its own, apart from your agents'.
 
 To test the included rmprep agent, follow the
 [local startup and testing guide](../../docs/local-startup.md). It covers the
-batch scripts, root `.env`, Anthropic/Phoenix setup, access code, sample questions,
-and stop/restart. The manual instructions below connect **your own agents**.
+model settings, access code and sample questions. The instructions below start
+Agent Lab and connect it to an agent, rmprep or **your own**. `ac2 services` is
+planned to install, start and stop Agent Lab and Phoenix for you.
 
 Use steps 1–4 below to connect your own agents. After your first chat, see
 [responses and inspection](#responses-and-inspection), [memos](#memos-beside-chat),
@@ -27,42 +28,41 @@ Enterprise SSO and shared hosting remain separate deployment work.
 Use company-provided **Python 3.11 or newer**, pip configured for JFrog or your
 approved package index, and a browser. Open **Command Prompt** (Windows) or a
 **Bash terminal** (macOS/Linux) at the repository root.
-For the complete rmprep stack, use `setup-local.bat` (`./setup-local.sh` on POSIX).
-To install just Agent Lab:
+
+Agent Lab needs an environment of its own: Chainlit requires MCP 1.x, and the
+agents and their MCP servers use MCP 2.x. Create one beside your other
+local state, which Git already ignores, and install Agent Lab into it:
 
 ```bat
-python tools\package_runtime.py ui --install -e packages\agentcraft2-core -e "packages\agentcraft2-ui[chat]"
-python tools\package_runtime.py ui --check
+python -m venv .agentcraft2\lab-env
+set "LAB_PYTHON=%CD%\.agentcraft2\lab-env\Scripts\python.exe"
+"%LAB_PYTHON%" -m pip install -e packages\agentcraft2-core -e "packages\agentcraft2-ui[chat]"
+"%LAB_PYTHON%" -m pip check
 ```
 
 Or on POSIX:
 
 ```bash
-python3 tools/package_runtime.py ui --install -e packages/agentcraft2-core -e "packages/agentcraft2-ui[chat]"
-python3 tools/package_runtime.py ui --check
+python3 -m venv .agentcraft2/lab-env
+LAB_PYTHON="$PWD/.agentcraft2/lab-env/bin/python"
+"$LAB_PYTHON" -m pip install -e packages/agentcraft2-core -e "packages/agentcraft2-ui[chat]"
+"$LAB_PYTHON" -m pip check
 ```
 
 Commands are shown for Windows, then for POSIX where they differ. Paths in the
 prose use Windows separators; on macOS/Linux use `/` and `python3`, for example
-`.agentcraft2/ui/config.json`.
+`.agentcraft2/ui/config.json`. `LAB_PYTHON` is set for the terminal you are in;
+set it again in each new one.
 
-The `chat` extra installs Chainlit 2.12.0 and its required dependencies into
-`packages\agentcraft2-ui\.venv\Lib\site-packages` (`.venv/lib/python3.x/site-packages`
-on macOS/Linux). The launcher uses your existing Python with
-that package folder. It runs the default Python and its pip module; `.venv` executables are never
-selected. Use a fresh terminal without activating an environment.
-Chainlit requires MCP 1.x; the agent/MCP server uses MCP 2.x. Separate package
-sets let these HTTP services use the same Python executable reliably.
+The `chat` extra installs Chainlit 2.12.0 and its required dependencies. Pip
+retains your enterprise index and certificate configuration. Your platform team
+must supply approved packages and native wheels. To install supplied core and UI
+wheels, replace the editable requirements with their wheel paths, retaining the
+UI wheel's `[chat]` extra. This preview has not been published as a release.
+Stop the UI before reinstalling its packages.
 
-Pip retains your enterprise index and certificate configuration. Your platform
-team must supply approved packages and native wheels. To install supplied core
-and UI wheels, replace the editable requirements after `--install` with their
-wheel paths, retaining the UI wheel's `[chat]` extra. This preview has not been
-published as a release. Stop the UI before reinstalling its packages.
-
-The commands below use `python tools\package_runtime.py ui -m agentcraft2_ui`
-from the repository root. This supplies the UI packages without changing the
-agent's imports. After changing Python versions, reinstall the UI package set.
+The commands below run `agentcraft2_ui` with `"%LAB_PYTHON%"` from the repository
+root. Your agents run with the Python you installed them into, not this one.
 
 ## 2. Start your agent and register its address
 
@@ -70,32 +70,31 @@ Start the agent and its MCP services in their own Command Prompt windows (or Bas
 terminals) using the same approved Python. The agent must accept `POST /invoke` with
 `input.question` and return `output.answer`, `thread_id`, and `request_id`.
 
-For [rmprep](../../examples/rmprep/README.md), run `setup-local.bat`
-(`./setup-local.sh` on POSIX) and configure its service `.env` first. These direct
-commands do not load the root `.env` used by `start-local.bat` (`./start-local.sh`).
-In a fresh Command Prompt at the repository root, start the MCP service with
-your approved Python:
+For [rmprep](../../examples/rmprep/README.md), install its workspace into your
+agents' Python and configure its service `.env` first. These commands read the
+service's own `.env`. In a fresh Command Prompt at the repository root, start the
+MCP service with that Python:
 
 ```bat
-python tools\package_runtime.py agent -m rmprep_data
+python -m rmprep_data
 ```
 
 Or on POSIX:
 
 ```bash
-python3 tools/package_runtime.py agent -m rmprep_data
+python3 -m rmprep_data
 ```
 
 In another Command Prompt at the repository root, start the HTTP agent:
 
 ```bat
-python tools\package_runtime.py agent -m rmprep.service --host 127.0.0.1 --port 8000
+python -m rmprep.service --host 127.0.0.1 --port 8000
 ```
 
 Or on POSIX:
 
 ```bash
-python3 tools/package_runtime.py agent -m rmprep.service --host 127.0.0.1 --port 8000
+python3 -m rmprep.service --host 127.0.0.1 --port 8000
 ```
 
 The checked-in `rmprep` entry in `examples\rmprep\registry\agents.yaml` includes
@@ -115,15 +114,15 @@ business answers.
 Return to a Command Prompt at the repository root. Run the first command as one line:
 
 ```bat
-python tools\package_runtime.py ui -m agentcraft2_ui init --env-file examples\rmprep\agents\rmprep\.env --agent rmprep --artifacts-agent rmprep --allow-url http://127.0.0.1:8000
-python tools\package_runtime.py ui -m agentcraft2_ui check
+"%LAB_PYTHON%" -m agentcraft2_ui init --env-file examples\rmprep\agents\rmprep\.env --agent rmprep --artifacts-agent rmprep --allow-url http://127.0.0.1:8000
+"%LAB_PYTHON%" -m agentcraft2_ui check
 ```
 
 Or on POSIX:
 
 ```bash
-python3 tools/package_runtime.py ui -m agentcraft2_ui init --env-file examples/rmprep/agents/rmprep/.env --agent rmprep --artifacts-agent rmprep --allow-url http://127.0.0.1:8000
-python3 tools/package_runtime.py ui -m agentcraft2_ui check
+"$LAB_PYTHON" -m agentcraft2_ui init --env-file examples/rmprep/agents/rmprep/.env --agent rmprep --artifacts-agent rmprep --allow-url http://127.0.0.1:8000
+"$LAB_PYTHON" -m agentcraft2_ui check
 ```
 
 `init` reads `AC2_REGISTRY_OPTIONS` and `AC2_IDENTITY_OPTIONS` from that agent's
@@ -150,14 +149,14 @@ not start services, call a model, or claim that an agent is ready to answer.
 
 ```bat
 type .agentcraft2\ui\access-code
-python tools\package_runtime.py ui -m agentcraft2_ui serve
+"%LAB_PYTHON%" -m agentcraft2_ui serve
 ```
 
 Or on POSIX:
 
 ```bash
 cat .agentcraft2/ui/access-code
-python3 tools/package_runtime.py ui -m agentcraft2_ui serve
+"$LAB_PYTHON" -m agentcraft2_ui serve
 ```
 
 Copy the displayed code and open [the local UI](http://127.0.0.1:8765). Enter the
@@ -244,9 +243,7 @@ inspection never reruns the agent or calls an MCP tool.
 
 The local rmprep service supplies the diagnostic reader. Set
 `AC2_MODEL_TRACE_PATH=.agentcraft2/model-trace.jsonl` in the agent's `.env`, then
-restart the agent to capture model exchanges for new turns. For the batch stack,
-run `stop-local.bat`, then `start-local.bat` (`./stop-local.sh`, then `./start-local.sh`
-on POSIX).
+restart the agent to capture model exchanges for new turns.
 Tracing captures conversation content; use the same private storage and retention
 rules as the agent's checkpoints. The inspector reads the agent's configured trace
 file, so retain that file to inspect earlier turns. Capture is not retroactive.
@@ -450,13 +447,13 @@ this adapter when upgrading Chainlit.
 From the repository root, install the UI development tools, then run:
 
 ```bat
-python tools\package_runtime.py ui --install -e packages\agentcraft2-core -e "packages\agentcraft2-ui[chat,dev]"
+"%LAB_PYTHON%" -m pip install -e packages\agentcraft2-core -e "packages\agentcraft2-ui[chat,dev]"
 cd packages\agentcraft2-ui
-python ..\..\tools\package_runtime.py ui -m pytest
-python ..\..\tools\package_runtime.py ui -m mypy
-python ..\..\tools\package_runtime.py ui -m ruff check .
-python ..\..\tools\package_runtime.py ui -m ruff format --check .
-python ..\..\tools\package_runtime.py ui --check
+"%LAB_PYTHON%" -m pytest
+"%LAB_PYTHON%" -m mypy
+"%LAB_PYTHON%" -m ruff check .
+"%LAB_PYTHON%" -m ruff format --check .
+"%LAB_PYTHON%" -m pip check
 python -m pip wheel --no-deps --wheel-dir dist .
 cd ..\..
 ```
@@ -464,13 +461,13 @@ cd ..\..
 Or on POSIX:
 
 ```bash
-python3 tools/package_runtime.py ui --install -e packages/agentcraft2-core -e "packages/agentcraft2-ui[chat,dev]"
+"$LAB_PYTHON" -m pip install -e packages/agentcraft2-core -e "packages/agentcraft2-ui[chat,dev]"
 cd packages/agentcraft2-ui
-python3 ../../tools/package_runtime.py ui -m pytest
-python3 ../../tools/package_runtime.py ui -m mypy
-python3 ../../tools/package_runtime.py ui -m ruff check .
-python3 ../../tools/package_runtime.py ui -m ruff format --check .
-python3 ../../tools/package_runtime.py ui --check
+"$LAB_PYTHON" -m pytest
+"$LAB_PYTHON" -m mypy
+"$LAB_PYTHON" -m ruff check .
+"$LAB_PYTHON" -m ruff format --check .
+"$LAB_PYTHON" -m pip check
 python3 -m pip wheel --no-deps --wheel-dir dist .
 cd ../..
 ```
@@ -503,15 +500,10 @@ preview does not imply approval for shared production hosting.
 
 ## Local Phoenix tracing
 
-The [Phoenix trial](../../docs/phoenix-trial.md) uses the same Python, a separate package folder, and SQLite.
-Run `start-phoenix.bat setup` (`./start-phoenix.sh setup` on POSIX) once from the
-library repository root, then follow the guide to enable Phoenix in the root `.env`.
-`start-local.bat` (`./start-local.sh`) starts the local Phoenix server before rmprep
-and Agent Lab, using `.agentcraft2\phoenix\.venv\Lib\site-packages`
-(`.agentcraft2/phoenix/.venv/lib/python3.x/site-packages` on POSIX).
-`stop-local.bat` (`./stop-local.sh`) in another terminal stops the stack and keeps saved
-conversations, traces, and checkpoints. **Ctrl+C** in the launcher window also works.
-Each response links to its Phoenix trace using **Open trace in Agent Lab**.
+The [Phoenix trial](../../docs/phoenix-trial.md) describes the traces Agent Lab links to.
+This checkout has no command that starts Phoenix; `ac2 services` is planned to install,
+start and stop it. When a Phoenix server is running on this machine and tracing is on,
+each response links to its trace using **Open trace in Agent Lab**.
 The **Logs** page provides local diagnostic inspection.
 
 ## Chat with an agent on AgentCore Runtime
@@ -522,8 +514,8 @@ its runtime ARN; the registry entry needs no `url` for such an agent. Run the
 first command as one line:
 
 ```bat
-python tools\package_runtime.py ui -m agentcraft2_ui init --env-file examples\rmprep\agents\rmprep\.env --agent rmprep --artifacts-agent rmprep --agentcore-runtime rmprep=arn:aws:bedrock-agentcore:eu-west-1:123456789012:runtime/rmprep-abc123
-python tools\package_runtime.py ui -m agentcraft2_ui check
+"%LAB_PYTHON%" -m agentcraft2_ui init --env-file examples\rmprep\agents\rmprep\.env --agent rmprep --artifacts-agent rmprep --agentcore-runtime rmprep=arn:aws:bedrock-agentcore:eu-west-1:123456789012:runtime/rmprep-abc123
+"%LAB_PYTHON%" -m agentcraft2_ui check
 ```
 
 Repeat `--agentcore-runtime AGENT=ARN` for more hosted agents; each must also be
@@ -536,7 +528,7 @@ Two authentication modes apply to every runtime binding of a configuration:
 - `--agentcore-auth iam` (default) signs each request with SigV4 using the
   desktop's AWS credentials, resolved by boto3 at each request (environment,
   profile or SSO session). Install the `aws` extra:
-  `python tools\package_runtime.py ui --install -e "packages\agentcraft2-ui[chat,aws]"`.
+  `"%LAB_PYTHON%" -m pip install -e "packages\agentcraft2-ui[chat,aws]"`.
 - `--agentcore-auth bearer --agentcore-token-file PATH` sends
   `Authorization: Bearer` with the first line of that file, for a runtime with a
   JWT authorizer. The UI reads the file for every request and never copies the

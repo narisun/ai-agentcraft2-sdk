@@ -486,9 +486,9 @@ def main() -&gt; int:
   <div class="table-wrap"><table>
     <thead><tr><th>Component</th><th>Owns</th><th>Local package location</th></tr></thead>
     <tbody>
-      <tr><td>Agent and MCP services</td><td>Business workflow, evidence, policy enforcement, and graph checkpoints</td><td><code>.venv/Lib/site-packages</code>; the approved Python runs it</td></tr>
-      <tr><td>Agent Lab</td><td>Agent selection, displayed chat history, memo versions, and inspection pages</td><td><code>packages/agentcraft2-ui/.venv/Lib/site-packages</code>; the same approved Python</td></tr>
-      <tr><td>Local Phoenix server, when enabled</td><td>Model/tool observations in a local SQLite database</td><td><code>.agentcraft2/phoenix/.venv/Lib/site-packages</code> with the same Python; included by <code>start-local.bat</code> when enabled</td></tr>
+      <tr><td>Agent and MCP services</td><td>Business workflow, evidence, policy enforcement, and graph checkpoints</td><td>The approved Python it was installed into</td></tr>
+      <tr><td>Agent Lab</td><td>Agent selection, displayed chat history, memo versions, and inspection pages</td><td>An environment of its own (Chainlit needs MCP 1.x); see the <a href="../packages/agentcraft2-ui/README.md#1-prepare-the-ui-packages">Agent Lab guide</a></td></tr>
+      <tr><td>Local Phoenix server, when enabled</td><td>Model/tool observations in a local SQLite database</td><td>Started by <code>ac2 services</code> once it is released; no command in this checkout starts it</td></tr>
     </tbody>
   </table></div>
   <p>A saved UI message, a graph checkpoint, and a model input are different things.
@@ -1085,7 +1085,7 @@ AC2_MODEL_PROVIDER=fake</code></pre>
       <tr><td>HTTP 401/403 or a proxy error during pip installation</td><td>Repeat the enterprise sign-in or proxy setup for this terminal. Confirm the pip repository endpoint with your team; use the same approved package source for each installation step.</td></tr>
       <tr><td><code>CERTIFICATE_VERIFY_FAILED</code></td><td>Ask for the enterprise CA configuration for this Python/pip environment. Pip supports a team-provided certificate bundle through <code>PIP_CERT</code>. Keep certificate verification enabled; the agent's <code>AC2_TLS_CA_BUNDLE</code> setting does not configure pip.</td></tr>
       <tr><td><code>No matching distribution found</code>, missing <code>hatchling</code>, or a compiler requirement</td><td>Share the package name, Python version, and Windows architecture with the package-maintenance team. They need to make compatible releases, build dependencies, and prebuilt wheels available. Use a team-supported build environment for dependencies that need compilation.</td></tr>
-      <tr><td><code>langchain_aws</code> is missing for Bedrock</td><td>For the local stack, run <code>setup-local.bat --model bedrock</code>. For generated agents, select Bedrock in the CLI and rerun <code>"%PYTHON%" -m agentcraft2_cli install</code>. This installs the AWS package's <code>bedrock</code> extra.</td></tr>
+      <tr><td><code>langchain_aws</code> is missing for Bedrock</td><td>Install <code>agentcraft2-aws[bedrock]</code> into the Python that runs the agent. For generated agents, select Bedrock in the CLI and rerun <code>"%PYTHON%" -m agentcraft2_cli install</code>. This installs the AWS package's <code>bedrock</code> extra.</td></tr>
       <tr><td>Ruff or a local test process is blocked by desktop policy</td><td>Have the approved tool package or local execution permission enabled by your support team. Use your team's approved development runner for checks your desktop cannot run, and record which checks still need to pass.</td></tr>
     </tbody>
   </table></div>
@@ -1122,20 +1122,18 @@ AC2_MODEL_PROVIDER=fake</code></pre>
   <details id="local-startup">
     <summary>How do I start Agent Lab, test rmprep, and stop the services?</summary>
     <p>Use the <a href="local-startup.md">local startup and testing guide</a>
-    for the complete walkthrough. Open <strong>Command Prompt</strong> in the
-    library repository root. Run <code>setup-local.bat</code> once, then configure
-    your model in <code>.env</code> beside <code>start-local.bat</code>. For local
-    tracing, follow the <a href="#phoenix-local">Phoenix setup recipe below</a>.
-    Setup uses your enterprise Python/pip configuration and
-    one Python for all services, with separate package folders for Agent Lab and Phoenix. The default setup installs
-    runtime packages. Run <code>setup-local.bat --dev</code> when you also need
-    the scaffolding CLI and the rmprep/Agent Lab test and development tools.</p>
-<pre><code class="language-bat">start-local.bat</code></pre>
-    <p>Check the printed settings: environment path, model, tracing backend and
-    masked credentials. Wait for <strong>All selected services are ready</strong>,
-    then open <code>http://127.0.0.1:8765</code>. Read the login code in a second
+    for the complete walkthrough. The <code>setup-local</code>, <code>start-local</code>,
+    <code>stop-local</code> and <code>start-phoenix</code> launchers have been removed, and
+    <code>ac2 services</code> is planned to install, start and stop Agent Lab and Phoenix.
+    Until it is released, install the SDK with <code>python tools/install_sdk.py --dev --editable</code>,
+    install the rmprep workspace, put Agent Lab in an environment of its own, and start the MCP
+    server, the agent and Agent Lab each in its own Command Prompt, as the
+    <a href="../packages/agentcraft2-ui/README.md">Agent Lab guide</a> shows. Configure your
+    model in the rmprep service's <code>.env</code>. Phoenix has no start command in this
+    checkout, so this walkthrough runs without traces.</p>
+    <p>Open <code>http://127.0.0.1:8765</code>. Read the login code in another
     Command Prompt at the repository root:</p>
-<pre><code class="language-bat">type .agentcraft2\ui-rmprep\access-code</code></pre>
+<pre><code class="language-bat">type .agentcraft2\ui\access-code</code></pre>
     <p>Sign in, select <strong>Choose agent → Start chat with rmprep</strong>, and
     ask <code>Prepare a memo for JONE-0022 as of 2026-08-03.</code> In the same
     chat, ask <code>Explain the covenant breaches and cash conversion cycle change.
@@ -1145,35 +1143,21 @@ AC2_MODEL_PROVIDER=fake</code></pre>
     <p>Text streams into a provisional draft; the final response keeps usage and
     elapsed time visible. <strong>Memos</strong> opens saved versions beside chat.
     Name a memo reference in your question to ask about an older version; selecting
-    it in the panel changes only the viewer. <strong>Open trace in Agent Lab</strong>
-    opens the turn's Phoenix timeline. <strong>Logs</strong> provides local
+    it in the panel changes only the viewer. <strong>Logs</strong> provides local
     diagnostics and checkpoint inspection.</p>
-    <p>When finished, run this in the second Command Prompt:</p>
-<pre><code class="language-bat">stop-local.bat</code></pre>
-    <p>Wait for <strong>Stopped gracefully</strong>. Conversations, memo versions,
-    traces and checkpoints remain available on restart. Repeat
-    <code>start-local.bat</code> for your next session. Restart after changing code
-    or environment settings. With services stopped, use
-    <code>start-local.bat --smoke-test</code> to check startup/shutdown without a
-    model request, or <code>start-local.bat demo</code> for scripted tool and
-    checkpoint examples.</p>
+    <p>When finished, press <strong>Ctrl+C</strong> in each service's Command Prompt.
+    Conversations, memo versions and checkpoints remain available on restart. Restart
+    after changing code or environment settings.</p>
   </details>
   <details id="phoenix-local">
     <summary>How do I enable Phoenix and check a conversation?</summary>
     <p>Phoenix shows what the model received, which MCP tools it called, and how
-    it answered. It runs locally with Python, pip and SQLite. Start with the
-    <a href="#local-startup">Agent Lab setup above</a> and configure Anthropic in
-    the root <code>.env</code>. Then follow these steps from
-    <strong>Command Prompt</strong> in the repository root.</p>
+    it answered. It runs locally with Python, pip and SQLite. <code>ac2 services</code>
+    is planned to install, start and stop it; until it is released, no command in this
+    checkout starts a Phoenix server. With one listening on this machine, follow these steps.</p>
     <ol>
-      <li><strong>Install the Phoenix packages once.</strong>
-<pre><code class="language-bat">start-phoenix.bat setup</code></pre>
-      <p>This installs the pinned Phoenix 20.21.1 through your existing pip
-      configuration. All services use the default Python. Phoenix keeps its
-      dependencies in <code>.agentcraft2\phoenix\.venv</code>; the launcher runs
-      Python and pip from your approved installation.</p></li>
-      <li><strong>Enable tracing.</strong> Add these settings to <code>.env</code>
-      beside <code>start-local.bat</code>. Keep your model settings and API key.
+      <li><strong>Enable tracing.</strong> Add these settings to the agent's own
+      <code>.env</code>. Keep your model settings and API key.
 <pre><code>AC2_TELEMETRY=off
 AC2_PHOENIX_ENABLED=true
 AC2_PHOENIX_CAPTURE_CONTENT=true
@@ -1182,11 +1166,8 @@ PHOENIX_PROJECT_NAME=rmprep-trial</code></pre>
       <p>Content capture records messages and tool results, so use approved test
       data. Phoenix receives model/tool traces and usage; <code>AC2_TELEMETRY=off</code>
       disables the separate operational telemetry exporter for this local setup.</p></li>
-      <li><strong>Start the stack.</strong>
-<pre><code class="language-bat">start-local.bat</code></pre>
-      <p>Check that startup shows the root <code>.env</code>, Anthropic, Phoenix,
-      and masked credentials. Wait for <strong>All selected services are ready</strong>.
-      Open <a href="http://127.0.0.1:8765">Agent Lab</a>, sign in using the
+      <li><strong>Start the services and open Agent Lab.</strong> Restart the agent
+      after changing a setting, open <a href="http://127.0.0.1:8765">Agent Lab</a>, sign in using the
       <a href="#local-startup">local access code</a>, and select
       <strong>Choose agent → Start chat with rmprep</strong>.</p></li>
       <li><strong>Check the conversation and traces.</strong> Follow the
@@ -1198,14 +1179,8 @@ PHOENIX_PROJECT_NAME=rmprep-trial</code></pre>
       <strong>Open trace in Agent Lab</strong>. Open that link to inspect Phoenix
       model inputs/outputs, MCP arguments/results and checkpoint references. The
       follow-ups should remember the search and zero matches without another
-      tool call. Their model inputs should include the earlier exchange. Phoenix
-      stores traces in <code>.agentcraft2\phoenix\data\phoenix.db</code>;
-      checkpoint contents stay in the agent's database.</p></li>
-      <li><strong>Stop when finished.</strong> In a second Command Prompt at the
-      repository root, run:
-<pre><code class="language-bat">stop-local.bat</code></pre>
-      <p>Wait for <strong>Stopped gracefully</strong>. Conversations, traces and
-      checkpoints remain available for the next session.</p></li>
+      tool call. Their model inputs should include the earlier exchange.
+      Checkpoint contents stay in the agent's database.</p></li>
     </ol>
     <p><strong>Verified October 16, 2026:</strong> the root <code>.env</code>,
     default Python 3.13 and Anthropic completed three turns on one thread, with
@@ -2088,11 +2063,9 @@ async def classify(
     in the trace. The adapter adds <code>output.trace</code> when enabled; existing
     answer, streaming and checkpoint interfaces keep their behavior.</p>
     <p>To run Phoenix on your own machine with Python and pip, follow
-    <a href="phoenix-trial.md">Trace agents with Phoenix</a>. Run
-    <code>start-phoenix.bat setup</code> once, then enable Phoenix in the root
-    <code>.env</code>. Run <code>start-local.bat</code> to start the local Phoenix server
-    before the MCP, agent, and UI services. It keeps separate <code>.venv</code> packages and uses the default Python;
-    <code>stop-local.bat</code> stops the stack and preserves SQLite traces. The agent
+    <a href="phoenix-trial.md">Trace agents with Phoenix</a>. Enable Phoenix in the
+    agent's <code>.env</code>; <code>ac2 services</code> is planned to start the local Phoenix
+    server, which keeps SQLite traces. The agent
     adds an <strong>Open trace in Agent Lab</strong> link to each response, opening the configured Phoenix trace. The walkthrough
     lists the opt-in settings and a verified Anthropic conversation. Traces go
     only to a Phoenix on your own machine, with no key; see

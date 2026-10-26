@@ -1,14 +1,13 @@
 # Documentation map
 
 Start with the task you want to complete. Commands in this index run in Command
-Prompt and in a macOS/Linux shell: paths use forward slashes, each `.bat`
-launcher has an `.sh` twin (for example `./start-local.sh`), and `python` is
+Prompt and in a macOS/Linux shell: paths use forward slashes and `python` is
 `python3` on macOS/Linux. Python and pip come from your team's approved package
 source.
 
 | Task | Read | Expected result |
 | --- | --- | --- |
-| Test the included business agent | [Local startup and testing](local-startup.md) | Set the root `.env`, start the stack, test memos and same-thread follow-ups, inspect traces, and stop safely |
+| Test the included business agent | [Local startup and testing](local-startup.md) | Set the model, start the services, test memos and same-thread follow-ups, and stop safely |
 | Build a new agent | [Getting started](getting-started.md) | Create the `tutorial` workspace, add a tool, and test permissions and behavior |
 | Learn the architecture | [Developer guide](developer-guide.html#principles) | Understand interfaces, dependency injection, providers, and the LangGraph boundary |
 | Connect an existing agent to the simulator | [Agent Lab setup](../packages/agentcraft2-ui/README.md#1-prepare-the-ui-packages) | Register an HTTP agent, start the UI, and resume saved chats |
@@ -29,8 +28,8 @@ edited. Without `--plan`, `update --diff` **writes updates** to untouched files.
 
 The README, getting-started tutorial, and HTML developer guide use the same
 `tutorial` workspace. Continue from your last completed step when switching
-documents. The launcher runs the separate, checked-in `examples/rmprep`
-workspace; it does not launch the agent you generated in `tutorial`.
+documents. The rmprep guide uses the separate, checked-in `examples/rmprep`
+workspace; it does not run the agent you generated in `tutorial`.
 
 ## Find the code
 
@@ -54,7 +53,7 @@ injects them into the components that use them.
 | `…/integrations/`, `…/assets/` in UI | FastAPI/Chainlit hooks, pages, and styling | Changing browser behavior or presentation |
 | `examples/rmprep/agents/rmprep/src/rmprep/` | Routing, memo/Q&A context selection, and business checks | Changing the RM preparation workflow |
 | `examples/rmprep/mcp-servers/rmprep-data/` | Evidence queries over the example data | Changing business data retrieval |
-| `tools/local_dev.py`, `tools/local_processes.py` | Repository setup and process supervision | Changing the startup scenarios |
+| `tools/install_sdk.py` | The one script that builds and installs the SDK | Changing how the SDK is built or installed |
 
 Follow one request in this order:
 
@@ -84,20 +83,19 @@ sends each new question once and lets the agent assemble model context.
 
 ## Use the same Python with the right packages
 
-Run these commands from the repository root. Use `setup-local.bat --dev` for
-rmprep and UI checks; the full library and guide checks require the additional
+Run these commands from the repository root. Use `python tools/install_sdk.py --dev --editable`
+for the library, rmprep and UI checks; the full library and guide checks require the additional
 [contributor dependencies](../README.md#working-on-the-library).
 
 | Work | Interpreter | Focused check |
 | --- | --- | --- |
 | Library and CLI (contributor setup) | `python` | `python -m pytest tests/architecture` |
-| rmprep (local setup) | `python` with agent packages | First `cd examples/rmprep`, then `python ../../tools/package_runtime.py agent -m pytest`; return with `cd ../..`. |
-| Agent Lab | `python` with the UI package folder | First `cd packages/agentcraft2-ui`, then `python ../../tools/package_runtime.py ui -m pytest`; return with `cd ../..`. |
+| rmprep (local setup) | `python` with agent packages | First `cd examples/rmprep`, then `python -m pytest`; return with `cd ../..`. |
+| Agent Lab | The Python of its own environment (`$LAB_PYTHON`) | First `cd packages/agentcraft2-ui`, then `"$LAB_PYTHON" -m pytest`; return with `cd ../..`. See the [Agent Lab guide](../packages/agentcraft2-ui/README.md#1-prepare-the-ui-packages). |
 | Developer guide (contributor setup) | `python` | `python docs/guide/build_guide.py --check` |
-| Local stack readiness | Launcher | With services stopped, run `start-local.bat --smoke-test`; it checks startup and shuts down without sending model requests. |
 
 The UI and MCP services use different dependency versions and communicate over
-HTTP. Setup isolates their packages while all processes use the same Python.
+HTTP. Agent Lab therefore runs in an environment of its own.
 See each package README for its full test and type-check commands.
 
 ## Current behavior and design material
