@@ -27,6 +27,7 @@ import importlib.metadata
 import importlib.util
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tomllib
@@ -329,6 +330,61 @@ def verify() -> list[str]:
     return ["pip check found no broken requirements", *imported.stdout.strip().splitlines()]
 
 
+def same_place(first: str | Path, second: str | Path) -> bool:
+    """Whether two paths name the same file or folder, ignoring case on Windows."""
+    return os.path.normcase(os.path.realpath(first)) == os.path.normcase(os.path.realpath(second))
+
+
+def python_command() -> str:
+    """Return how to run this Python: ``python`` when that is this one, else its full path."""
+    found = shutil.which("python")
+    if found and same_place(found, sys.executable):
+        return "python"
+    return f'"{sys.executable}"'
+
+
+def command_note() -> list[str]:
+    """Return the lines that say how to run ``ac2`` now that the SDK is installed.
+
+    pip puts the command in its scripts folder, which is not always on PATH (a base Python
+    on Windows usually has it off PATH), and an older ``ac2`` elsewhere on PATH can come
+    first. Either way typing ``ac2`` would fail or run the wrong one, so say which it is.
+    """
+    module = f"{python_command()} -m agentcraft2_cli"
+    importlib.invalidate_caches()
+    try:
+        installed = importlib.metadata.distribution("agentcraft2-cli")
+    except importlib.metadata.PackageNotFoundError:
+        return [f"Check it with: {module} --version"]
+    command = next(
+        (
+            Path(str(installed.locate_file(entry)))
+            for entry in installed.files or []
+            if entry.name in {"ac2", "ac2.exe"}
+        ),
+        None,
+    )
+    if command is None:
+        return [f"Check it with: {module} --version"]
+    command = Path(os.path.normpath(command))
+    folder = command.parent
+    on_path = [entry for entry in os.environ.get("PATH", "").split(os.pathsep) if entry]
+    if not any(same_place(entry, folder) for entry in on_path):
+        return [
+            f"The 'ac2' command is in {folder}, which is not on your PATH, so typing 'ac2' fails.",
+            f"Until you add that folder to PATH, run it as: {module}",
+            f"Check it with: {module} --version",
+        ]
+    first = shutil.which("ac2")
+    if first and not same_place(first, command):
+        return [
+            f"Typing 'ac2' runs {first}, not the one just installed in {folder}.",
+            f"Remove the old one or put {folder} first on PATH. Until then, run: {module}",
+            f"Check it with: {module} --version",
+        ]
+    return [f"Check it with: ac2 --version (or {module} --version)"]
+
+
 def run(arguments: argparse.Namespace, pip_arguments: Sequence[str]) -> None:
     """Run every step in order. The first problem stops the run."""
     total = len(STEPS)
@@ -403,7 +459,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         if problem.fix:
             sys.stderr.write(f"fix: {problem.fix}\n")
         return 1
-    say("The SDK is installed. Check it with: python -m agentcraft2_cli --version")
+    say("The SDK is installed.")
+    for line in command_note():
+        say(line)
     return 0
 
 
