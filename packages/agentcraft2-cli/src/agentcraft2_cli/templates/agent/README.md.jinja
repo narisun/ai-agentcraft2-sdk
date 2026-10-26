@@ -87,10 +87,10 @@ the agent can discover its tools during startup.
 Open another terminal at the workspace root and select Python again:
 
 ```bat
-"%PYTHON%" -m {{ package }}.service --port {{ port }}
+"%PYTHON%" -m agentcraft2_cli run {{ name }} --port {{ port }}
 ```
 
-Leave it running. Wait for the `ready` log event. The server listens at
+(`run` starts the same service as `"%PYTHON%" -m {{ package }}.service`; the MCP servers are started the same way.) Leave it running. Wait for the `ready` log event. The server listens at
 `http://127.0.0.1:{{ port }}`. `/healthz` reports liveness; `/readyz` becomes
 successful after startup validation and graph/tool preparation finish.
 

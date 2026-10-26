@@ -6,6 +6,9 @@ from typing import Any
 
 from agentcraft2_core import ServiceContainer
 from mcp.server.mcpserver import MCPServer
+{% if sample %}
+from mcp.server.mcpserver.exceptions import ToolError
+{% endif %}
 
 __all__ = ["APPLICATION", "DATA_SOURCE", "SERVER_ID", "build_server"]
 
@@ -43,6 +46,11 @@ def build_server(services: ServiceContainer) -> MCPServer[Any]:
     @server.tool(name="{{ server_id }}.greet")
     async def greet(name: str) -> str:
         """Return a greeting for a person, given their name."""
+        if not name.strip():
+            # A ToolError is a failure you expected, and its message reaches the model, which
+            # can then correct the call. Any other exception shows the caller only
+            # "Error executing tool <name>"; its text stays in this server's log.
+            raise ToolError("give the name of the person to greet")
         return f"Hello, {name.strip()}! This is {APPLICATION}."
 {% endif %}
 {% for query in plan.queries %}

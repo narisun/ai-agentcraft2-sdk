@@ -2422,6 +2422,7 @@ async def classify(
 <tbody>
 <tr><td><span class="var">--opa</span></td><td><code>off</code></td><td>Also check that OPA agrees with the rules.</td></tr>
 <tr><td><span class="var">--keep-going</span></td><td><code>off</code></td><td>Run every check even after one fails.</td></tr>
+<tr><td><span class="var">--fix</span></td><td><code>off</code></td><td>First fix what ruff can: lint fixes and formatting. Review the changes it makes.</td></tr>
 <tr><td><span class="var">--workspace</span></td><td><span class="muted">none</span></td><td>A folder inside the workspace. Default: the current folder.</td></tr>
 </tbody></table></div>
 <h4 id="cli-config-explain"><code>agentcraft2 config explain</code></h4>
@@ -2501,6 +2502,7 @@ async def classify(
 <thead><tr><th>Flag</th><th>Default</th><th>Meaning</th></tr></thead>
 <tbody>
 <tr><td><span class="var">--no-dev</span></td><td><code>off</code></td><td>Omit the workspace&#x27;s development tools.</td></tr>
+<tr><td><span class="var">--verbose</span></td><td><code>off</code></td><td>Show everything pip prints, not only problems.</td></tr>
 <tr><td><span class="var">--workspace</span></td><td><span class="muted">none</span></td><td>A folder inside the workspace. Default: the current folder.</td></tr>
 </tbody></table></div>
 <h4 id="cli-link"><code>agentcraft2 link</code></h4>
@@ -2565,7 +2567,7 @@ async def classify(
 <tr><td><span class="var">--workspace</span></td><td><span class="muted">none</span></td><td>A folder inside the workspace. Default: the current folder.</td></tr>
 </tbody></table></div>
 <h4 id="cli-registry-pin"><code>agentcraft2 registry pin</code></h4>
-<p class="small">Pin the input schema of every tool of the MCP server SERVER.</p>
+<p class="small">Register the tools of the MCP server SERVER as the server offers them, and pin them.</p>
 <pre class="usage">agentcraft2 registry pin [OPTIONS] SERVER</pre>
 <div class="table-wrap"><table class="opts">
 <thead><tr><th>Flag</th><th>Default</th><th>Meaning</th></tr></thead>

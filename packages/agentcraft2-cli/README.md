@@ -54,14 +54,14 @@ On macOS/Linux, use a bash or zsh terminal. Write `LIBRARY="$PWD"` and
 | Command | What it does |
 | --- | --- |
 | `agentcraft2 init NAME` | Creates the workspace folder with shared registry and rules files |
-| `agentcraft2 install [--no-dev]` | Installs this workspace's agents and MCP servers, their dependencies and the development tools using the current Python's pip. It never installs the SDK, which has its own installer; it stops with the fix if the SDK is missing |
+| `agentcraft2 install [--no-dev] [--verbose]` | Installs this workspace's agents and MCP servers, their dependencies and the development tools using the current Python's pip. It never installs the SDK, which has its own installer; it stops with the fix if the SDK is missing |
 | `agentcraft2 new mcp NAME` | Adds an MCP server: one plain tool, one governed query over a sample CSV file, tests |
 | `agentcraft2 new mcp NAME --from-csv DIR` | Adds an MCP server over your own CSV files, with tools proposed from what is in them |
 | `agentcraft2 new mcp NAME --from-openapi FILE` | Adds an MCP server over a REST API, with one tool for each GET operation that answers with records |
 | `agentcraft2 new mcp NAME --from-redshift SCHEMA` | Adds an MCP server over Redshift tables. Reads the catalogue only; runs locally on stand-in data |
 | `agentcraft2 new agent NAME [--mcp SERVER]` | Adds a LangGraph agent with one tool, a command line, an HTTP entry point, tests |
 | `agentcraft2 link AGENT SERVER` | Lets an existing agent call an existing server, and adds a test of the two together |
-| `agentcraft2 registry pin SERVER` | Pins the input schema of every tool of a server in the tool registry |
+| `agentcraft2 registry pin SERVER` | Registers the tools the server offers in the tool registry (adding new ones, dropping removed ones) and pins every input schema |
 | `agentcraft2 init --answers agentcraft2.toml` | Generates a whole workspace again from its recorded answers |
 | `agentcraft2 doctor [SERVICE]` | Builds each service from its `.env` and checks everything it is configured to use. Says what is wrong and how to fix it |
 | `agentcraft2 config explain SERVICE` | Lists every setting of a service and where its value came from. Secrets are masked |
@@ -70,7 +70,7 @@ On macOS/Linux, use a bash or zsh terminal. Write `LIBRARY="$PWD"` and
 | `agentcraft2 policy test [--opa]` | Decides the sample requests in `tests/policy-samples.yaml` and compares with what each expects |
 | `agentcraft2 update [--plan] [--diff]` | Brings generated files up to what this version writes, leaving the files you changed alone. `--plan` previews every change and writes nothing; `--diff` shows what the templates would change in the files you changed (without `--plan`, `--diff` also applies the update). See [Updating generated code](#updating-generated-code) |
 | `agentcraft2 config options [PORT [NAME]] [--schema]` | Lists every adapter, and each adapter's options with types, defaults and meanings; `--schema` prints JSON Schema for an editor |
-| `agentcraft2 check [--opa] [--keep-going]` | Runs what CI runs: ruff, the format check, mypy, pytest and the policy samples. Names the step that failed |
+| `agentcraft2 check [--opa] [--keep-going] [--fix]` | Runs what CI runs: ruff, the format check, mypy, pytest and the policy samples. Names the step that failed and the steps that did not run; `--fix` lets ruff correct lint and formatting first |
 | `agentcraft2 eval [SERVICE] [--accept]` | Runs the evals of one service or all: its tests marked `eval`, with the real model in its `.env`. `--accept` runs one service's evals and, if they pass, promotes the report to `evals/baseline.json`; later runs gate on it. See [Measure an agent with evals](../../docs/evals.md) |
 | `agentcraft2 deploy SERVICE [--plan]` | Writes the Terraform and Dockerfiles that run the service on ECS Fargate, from the settings in its `deploy.env`; every IAM permission comes from the adapter that needs it. `--plan` shows it all and writes nothing |
 

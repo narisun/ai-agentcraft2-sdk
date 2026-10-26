@@ -148,6 +148,8 @@ def synced(
     Returns:
         The entry, the names of the tools added and the names of the tools dropped.
     """
+    if not pins:
+        return server, [], []  # nothing was reported, so nothing is known to have changed
     known = {tool.name for tool in server.tools}
     kept = tuple(
         replace(tool, schema_sha256=pins[tool.name]) for tool in server.tools if tool.name in pins

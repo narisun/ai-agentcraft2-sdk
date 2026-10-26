@@ -46,7 +46,7 @@ include the core `otel` extra; the installer uses Python and pip.
 "%PYTHON%" -m agentcraft2_cli install
 "%PYTHON%" -m agentcraft2_cli config explain {{ name }}
 "%PYTHON%" -m agentcraft2_cli doctor {{ name }}
-"%PYTHON%" -m {{ package }}.service --port {{ port }}
+"%PYTHON%" -m agentcraft2_cli run {{ name }} --port {{ port }}
 ```
 
 Process variables override `agents/{{ name }}/.env`. Restart the agent after

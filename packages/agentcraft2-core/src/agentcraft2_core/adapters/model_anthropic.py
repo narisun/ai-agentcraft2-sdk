@@ -79,7 +79,11 @@ class AnthropicChatModelProvider:
             from langchain_anthropic import ChatAnthropic
         except ImportError as exc:
             raise ConfigurationError(
-                f"the anthropic model provider is not installed; {_INSTALL_HINT}"
+                f"the anthropic model provider is not installed; {_INSTALL_HINT}",
+                fix=(
+                    "in a workspace, add 'anthropic' to the extras of agentcraft2-core in the "
+                    "service's pyproject.toml, then run 'agentcraft2 install'"
+                ),
             ) from exc
         if not api_key.get_secret_value():
             raise ConfigurationError("the anthropic model provider needs a non-empty API key")

@@ -290,6 +290,10 @@ def test_syncing_a_server_adds_what_it_offers_and_drops_what_it_stopped_offering
     assert first.schema_sha256 == old
 
 
+def test_a_server_that_reported_nothing_is_left_as_it_is() -> None:
+    assert synced(SERVER, {}) == (SERVER, [], [])
+
+
 def test_syncing_keeps_what_the_developer_set_on_a_tool_that_is_still_offered() -> None:
     entry, added, dropped = synced(SERVER, {"hello.greet": "ab" * 32})
     assert (added, dropped) == ([], [])

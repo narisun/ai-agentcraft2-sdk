@@ -237,7 +237,8 @@ library version for repeatable CI runs.
 | `registry/agents.yaml` | Agents and the MCP servers each may call |
 | `registry/mcp-tools.yaml` | Servers, tools, and pins of their input schemas |
 | `policies/agentcraft2/rules/data.yaml` | Allow rules; unmatched requests are denied |
-| `tests/` | Workspace tests and tests of agents together with servers |
+| `pyproject.toml` | The workspace's development tools (pytest, ruff, mypy). A service's own dependencies are in `agents/<name>/pyproject.toml` or `mcp-servers/<name>/pyproject.toml` |
+| `tests/` | Workspace tests and tests of an agent together with a server (for example `tests/test_<agent>_with_<server>.py`). Each service also has its own `tests/` folder for its own tests |
 | `examples/read_trace.py` | Read a model trace as formatted JSON |
 | `docs/verified-anthropic-run.md` | Annotated real model calls and checkpoint snapshots |
 | `docs/samples/verified-anthropic/` | Selected-field samples from the verified run |

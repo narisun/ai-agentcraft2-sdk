@@ -46,7 +46,7 @@ include the core `otel` extra; the installer uses Python and pip.
 "%PYTHON%" -m agentcraft2_cli install
 "%PYTHON%" -m agentcraft2_cli config explain rmqna
 "%PYTHON%" -m agentcraft2_cli doctor rmqna
-"%PYTHON%" -m rmqna.service --port 8200
+"%PYTHON%" -m agentcraft2_cli run rmqna --port 8200
 ```
 
 Process variables override `agents/rmqna/.env`. Restart the agent after
