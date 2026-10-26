@@ -22,8 +22,10 @@ ROOT = Path(__file__).resolve().parents[2]
 OLD = install_sdk.Installed("agentcraft2-core", "0.0.9", editable=False, location="site-packages")
 
 
-def arguments(*, dev: bool = False, editable: bool = False) -> argparse.Namespace:
-    return argparse.Namespace(dev=dev, editable=editable)
+def arguments(
+    *, dev: bool = False, editable: bool = False, verbose: bool = False
+) -> argparse.Namespace:
+    return argparse.Namespace(dev=dev, editable=editable, verbose=verbose)
 
 
 def completed(returncode: int = 0, stdout: str = "", stderr: str = "") -> Any:
@@ -259,7 +261,13 @@ def test_wheels_are_installed_together_with_pips_own_arguments(
 ) -> None:
     wheels = [Path(f"dist/{name}.whl") for name in ("core", "aws", "cli")]
     call = installation(monkeypatch, dev=False, editable=False, wheels=wheels)
-    assert call == ["install", *(str(wheel) for wheel in wheels), "--no-index"]
+    assert call == [
+        "install",
+        "-q",
+        "--no-warn-script-location",
+        *(str(wheel) for wheel in wheels),
+        "--no-index",
+    ]
 
 
 def test_a_development_install_is_editable_with_every_extra_and_the_tools(
@@ -284,6 +292,78 @@ def test_a_failed_install_says_the_earlier_sdk_is_gone(monkeypatch: pytest.Monke
     with pytest.raises(install_sdk.SetupError) as caught:
         install_sdk.install(arguments(editable=True), [], [])
     assert "already uninstalled" in caught.value.fix
+
+
+def test_pip_prints_only_problems_unless_everything_is_asked_for(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(install_sdk, "DIST", tmp_path)
+    made: list[list[str]] = []
+
+    def record(call: list[str], **_: Any) -> Any:
+        made.append(call)
+        if call[0] == "wheel":
+            name = call[-1].replace("\\", "/").rsplit("/", 1)[-1].replace("-", "_")
+            (tmp_path / f"{name}-0.1.0-py3-none-any.whl").write_bytes(b"")
+        return completed()
+
+    monkeypatch.setattr(install_sdk, "pip", record)
+    install_sdk.build_wheels()
+    install_sdk.build_wheels(verbose=True)
+    quiet, loud = made[:3], made[3:]
+    assert all("-q" in call for call in quiet)
+    assert not any("-q" in call for call in loud)
+    assert install_sdk.quiet(False) == ["-q"]
+    assert install_sdk.quiet(True) == []
+
+
+def test_verbose_installs_with_all_of_pips_output(monkeypatch: pytest.MonkeyPatch) -> None:
+    made: list[list[str]] = []
+
+    def record(call: list[str], **_: Any) -> Any:
+        made.append(call)
+        return completed()
+
+    monkeypatch.setattr(install_sdk, "pip", record)
+    install_sdk.install(arguments(editable=True, verbose=True), [], [])
+    assert "-q" not in made[0]
+
+
+# -------------------------------------------------------- leftovers of a stopped uninstall
+
+
+@pytest.fixture
+def site_packages(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    folder = tmp_path / "site-packages"
+    folder.mkdir()
+    monkeypatch.setattr(install_sdk, "site_folders", lambda: [folder])
+    return folder
+
+
+def test_what_a_stopped_uninstall_left_is_found_by_name(site_packages: Path) -> None:
+    (site_packages / "~gentcraft2_cli-0.1.0.dist-info").mkdir()
+    (site_packages / "~gentcraft2-core").mkdir()
+    (site_packages / "~ytest").mkdir()  # not ours
+    (site_packages / "agentcraft2_cli").mkdir()  # installed, not left over
+    names = [entry.name for entry in install_sdk.leftovers()]
+    assert names == ["~gentcraft2-core", "~gentcraft2_cli-0.1.0.dist-info"]
+
+
+@pytest.mark.usefixtures("environment")
+def test_the_check_warns_about_a_leftover_and_says_how_to_delete_it(site_packages: Path) -> None:
+    (site_packages / "~gentcraft2_cli-0.1.0.dist-info").mkdir()
+    lines = install_sdk.check_environment(arguments(), [])
+    (warning,) = [line for line in lines if line.startswith("warning:")]
+    assert "~gentcraft2_cli-0.1.0.dist-info" in warning
+    assert "interrupted uninstall" in warning
+    assert any(command in warning for command in ("rmdir /s /q", "rm -rf"))
+
+
+@pytest.mark.usefixtures("environment")
+def test_no_warning_without_a_leftover(site_packages: Path) -> None:
+    del site_packages
+    lines = install_sdk.check_environment(arguments(), [])
+    assert not [line for line in lines if line.startswith("warning:")]
 
 
 # ------------------------------------------------------------------------- its own scope

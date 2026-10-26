@@ -17,7 +17,8 @@ Steps, each reported as it starts and again when it is complete:
 Options: ``--dev`` also installs every optional dependency and the development tools;
 ``--editable`` installs the checkout itself instead of the built wheels, so edits to the
 source take effect at once. Any other argument is passed to pip, for example
-``--no-index --find-links=/path/to/wheels``.
+``--no-index --find-links=/path/to/wheels``. pip prints only problems, so the steps
+stay readable; ``--verbose`` shows everything pip prints.
 """
 
 from __future__ import annotations
@@ -28,8 +29,10 @@ import importlib.util
 import json
 import os
 import shutil
+import site
 import subprocess
 import sys
+import sysconfig
 import tomllib
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -102,6 +105,15 @@ def pip(arguments: Sequence[str], *, capture: bool = False) -> subprocess.Comple
     )
 
 
+def quiet(verbose: bool) -> list[str]:
+    """Return pip's option for printing only problems, unless everything was asked for.
+
+    pip lists every requirement that is already satisfied, which buries the steps of this
+    script and what failed.
+    """
+    return [] if verbose else ["-q"]
+
+
 def project(package: str) -> dict[str, Any]:
     """Read the ``[project]`` table of one package of this checkout."""
     path = ROOT / "packages" / package / "pyproject.toml"
@@ -137,6 +149,39 @@ def development_tools() -> list[str]:
             f"{path} has no 'dev' dependency group", "restore the group, or omit --dev"
         )
     return [str(tool) for tool in tools]
+
+
+def site_folders() -> list[Path]:
+    """Return the folders this Python installs packages into."""
+    folders = {sysconfig.get_path("purelib"), sysconfig.get_path("platlib")}
+    folders.update(site.getsitepackages())
+    return sorted(Path(folder) for folder in folders if folder)
+
+
+def leftovers() -> list[Path]:
+    """Return what pip left behind when an uninstall of the SDK was interrupted.
+
+    pip renames what it is about to remove by replacing the first letter with ``~``. When the
+    uninstall stops half way (on Windows, a running ``ac2`` locks its own file) the renamed
+    folder stays. pip then warns about it on every run and never removes it.
+    """
+    ours = {module_name(name)[1:] for name in SDK_DISTRIBUTIONS}
+    found = []
+    for folder in site_folders():
+        if not folder.is_dir():
+            continue
+        for entry in sorted(folder.iterdir()):
+            normal = entry.name[1:].lower().replace("-", "_")
+            if entry.name.startswith("~") and any(normal.startswith(name) for name in ours):
+                found.append(entry)
+    return found
+
+
+def removal_command(path: Path) -> str:
+    """Return the command that deletes ``path`` on this system."""
+    if os.name == "nt":
+        return f'rmdir /s /q "{path}"' if path.is_dir() else f'del "{path}"'
+    return f"rm -rf '{path}'"
 
 
 def check_environment(arguments: argparse.Namespace, pip_arguments: Sequence[str]) -> list[str]:
@@ -199,6 +244,11 @@ def check_environment(arguments: argparse.Namespace, pip_arguments: Sequence[str
     if not os.access(DIST, os.W_OK):
         raise SetupError(f"the build folder {DIST} is not writable")
     lines.append(f"Wheels will be built in {DIST}")
+    for entry in leftovers():
+        lines.append(
+            f"warning: {entry} is left over from an interrupted uninstall. pip ignores it and "
+            f"warns about it on every run. Delete it: {removal_command(entry)}"
+        )
     return lines
 
 
@@ -220,7 +270,7 @@ def find_installed() -> list[Installed]:
     return found
 
 
-def build_wheels() -> list[Path]:
+def build_wheels(verbose: bool = False) -> list[Path]:
     """Build one wheel of each package into the build folder, replacing earlier ones."""
     for old in DIST.glob("agentcraft2_*.whl"):
         old.unlink()
@@ -228,7 +278,14 @@ def build_wheels() -> list[Path]:
     for package in PACKAGES:
         say(f"      building {package}")
         built = pip(
-            ["wheel", "--no-deps", "--wheel-dir", str(DIST), str(ROOT / "packages" / package)]
+            [
+                "wheel",
+                *quiet(verbose),
+                "--no-deps",
+                "--wheel-dir",
+                str(DIST),
+                str(ROOT / "packages" / package),
+            ]
         )
         if built.returncode != 0:
             raise SetupError(
@@ -294,7 +351,17 @@ def install(arguments: argparse.Namespace, wheels: Sequence[Path], extra: Sequen
             requirements.append(f"{wheels[index]}{extras}")
     if arguments.dev:
         requirements.extend(development_tools())
-    installed = pip(["install", *requirements, *extra])
+    # The scripts-folder warning is left out: the last line of this script says whether ac2
+    # can be typed, which is what the warning is about.
+    installed = pip(
+        [
+            "install",
+            *quiet(getattr(arguments, "verbose", False)),
+            "--no-warn-script-location",
+            *requirements,
+            *extra,
+        ]
+    )
     if installed.returncode != 0:
         raise SetupError(
             f"pip could not install the SDK (exit code {installed.returncode}); "
@@ -426,7 +493,7 @@ def steps(
     if arguments.editable:
         complete(["editable install: there is nothing to build"])
     else:
-        wheels = build_wheels()
+        wheels = build_wheels(getattr(arguments, "verbose", False))
         complete([])
 
     begin()
@@ -450,6 +517,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--dev", action="store_true", help="also install the development tools")
     parser.add_argument(
         "--editable", action="store_true", help="install the checkout itself, not built wheels"
+    )
+    parser.add_argument(
+        "--verbose", action="store_true", help="show everything pip prints, not only problems"
     )
     arguments, pip_arguments = parser.parse_known_args(argv)
     try:
