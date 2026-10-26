@@ -162,6 +162,7 @@ def test_an_install_builds_aside_checks_and_then_replaces_the_old_packages(
     packages.install(base, ["--editable", "x[viewer]"], pip=pip)
     assert asked[0][0] == "install"
     assert "--no-user" in asked[0]
+    assert "--no-warn-conflicts" in asked[0]
     assert asked[0][-2:] == ["--editable", "x[viewer]"]
     assert (old / "new.txt").is_file()
     assert not (old / "old.txt").exists()

@@ -96,7 +96,21 @@ def install(
     previous = destination.with_name(f".{destination.name}-previous-{uuid4().hex}")
     try:
         flags = ["-q"] if quiet else []
-        code = pip(["install", *flags, "--no-user", "--target", str(staging), *requirements], base)
+        # The packages of a service go in a folder of their own, so the Python's own packages are
+        # not part of the set; the set is checked below. Without this option pip reports
+        # conflicts between the new set and packages of the Python that the service never loads.
+        code = pip(
+            [
+                "install",
+                *flags,
+                "--no-user",
+                "--no-warn-conflicts",
+                "--target",
+                str(staging),
+                *requirements,
+            ],
+            base,
+        )
         if code != 0:
             raise CliError(
                 f"pip could not install the packages (exit code {code}); its output is above",
