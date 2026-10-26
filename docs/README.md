@@ -53,7 +53,7 @@ injects them into the components that use them.
 | `…/integrations/`, `…/assets/` in UI | FastAPI/Chainlit hooks, pages, and styling | Changing browser behavior or presentation |
 | `examples/rmprep/agents/rmprep/src/rmprep/` | Routing, memo/Q&A context selection, and business checks | Changing the RM preparation workflow |
 | `examples/rmprep/mcp-servers/rmprep-data/` | Evidence queries over the example data | Changing business data retrieval |
-| `tools/install_sdk.py` | The one script that builds and installs the SDK | Changing how the SDK is built or installed |
+| `tools/install_sdk.py`, `install-sdk.bat`, `install-sdk.sh` | The one script that builds and installs the SDK, and its two launchers | Changing how the SDK is built or installed |
 
 Follow one request in this order:
 

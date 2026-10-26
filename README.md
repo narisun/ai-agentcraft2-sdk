@@ -245,16 +245,18 @@ Select your approved Python, then build and install the SDK with the contributor
 ```bat
 rem Windows Command Prompt, from ai-agentcraft2-sdk/
 set "PYTHON=python"
-"%PYTHON%" tools/install_sdk.py --dev --editable
+install-sdk.bat --dev --editable
 ```
 
 ```bash
 # macOS/Linux, from ai-agentcraft2-sdk/
 PYTHON=python3
-"$PYTHON" tools/install_sdk.py --dev --editable
+./install-sdk.sh --dev --editable
 ```
 
-`tools/install_sdk.py` is the one script that builds and installs the SDK. It checks the
+`install-sdk.bat` and `install-sdk.sh` run `tools/install_sdk.py` with the Python in `PYTHON`
+(`python` or `python3` on your PATH when it is not set) and pass every option on; they stop
+with the fix when that Python cannot run. `tools/install_sdk.py` is the one script that builds and installs the SDK. It checks the
 environment, looks for an SDK that is already installed, builds the packages, uninstalls the
 old SDK and only then installs the new one, printing each step as it goes and stopping at the
 first problem. With `--dev --editable` it installs the local packages, optional dependencies
