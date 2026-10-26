@@ -139,8 +139,11 @@ def test_the_pack_is_what_a_default_registry_loads() -> None:
 
 def test_a_missing_library_names_the_fix(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(sys.modules, "langchain_aws", None)
-    with pytest.raises(ConfigurationError, match=r"agentcraft2-aws\[bedrock\]"):
+    with pytest.raises(ConfigurationError, match=r"agentcraft2-aws\[bedrock\]") as caught:
         BedrockChatModelProvider(offline_sessions())
+    assert caught.value.fix is not None
+    assert "pyproject.toml" in caught.value.fix
+    assert "agentcraft2 install" in caught.value.fix
 
 
 def test_r17_the_model_client_leaves_retries_to_the_pipeline() -> None:

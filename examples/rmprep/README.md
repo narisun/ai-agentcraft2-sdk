@@ -311,7 +311,7 @@ references, comparisons, long histories, tool argument drift and older checkpoin
 
 ## Local Phoenix tracing
 
-The [Phoenix trial](../../docs/phoenix-trial.md) describes the traces. `ac2 services` is planned
-to install, start and stop Phoenix; until it is released, no command in the library starts it.
+The [Phoenix trial](../../docs/phoenix-trial.md) describes the traces. The SDK's installer
+installs Phoenix, and `ac2 services start phoenix` starts it.
 With a Phoenix server on this machine and tracing enabled in `agents/rmprep/.env`, each
 response links to its Phoenix trace; the existing turn inspector remains available.

@@ -4,7 +4,7 @@
 
 [tool.uv.workspace]
 members = ["packages/*"]
-exclude = ["packages/agentcraft2-ui"] # A separately managed environment.
+exclude = ["packages/agentcraft2-ui", "packages/agentcraft2-phoenix"] # Separately managed environments.
 
 [dependency-groups]
 dev = [
@@ -78,6 +78,9 @@ max-complexity = 12
 "tests/**" = ["D", "S101", "S105", "S106", "S608", "ARG"]
 # The specification fixes these exception names, so the Error-suffix rule is off here.
 "**/contracts/errors.py" = ["N818"]
+# click reads the backspace of \b in a help text as 'do not rewrap this block'.
+"**/agentcraft2_cli/commands/*.py" = ["D301"]
+"**/agentcraft2_cli/app.py" = ["D301"]
 # Method signatures here are fixed by the framework base class.
 "**/adapters/model_fake.py" = ["ARG002"]
 "**/integrations/langgraph/model.py" = ["ARG002"]
@@ -109,9 +112,11 @@ mypy_path = [
     "$MYPY_CONFIG_FILE_DIR/packages/agentcraft2-core/src",
     "$MYPY_CONFIG_FILE_DIR/packages/agentcraft2-aws/src",
     "$MYPY_CONFIG_FILE_DIR/packages/agentcraft2-cli/src",
+    "$MYPY_CONFIG_FILE_DIR/packages/agentcraft2-phoenix/src",
     "$MYPY_CONFIG_FILE_DIR/packages/agentcraft2-core/tests",
     "$MYPY_CONFIG_FILE_DIR/packages/agentcraft2-aws/tests",
     "$MYPY_CONFIG_FILE_DIR/packages/agentcraft2-cli/tests",
+    "$MYPY_CONFIG_FILE_DIR/packages/agentcraft2-phoenix/tests",
     "$MYPY_CONFIG_FILE_DIR/tests",
     "$MYPY_CONFIG_FILE_DIR/docs/guide",
 ]
@@ -119,9 +124,11 @@ files = [
     "packages/agentcraft2-core/src",
     "packages/agentcraft2-aws/src",
     "packages/agentcraft2-cli/src",
+    "packages/agentcraft2-phoenix/src",
     "packages/agentcraft2-core/tests",
     "packages/agentcraft2-aws/tests",
     "packages/agentcraft2-cli/tests",
+    "packages/agentcraft2-phoenix/tests",
     "tests",
     "docs/guide",
     "tools",
@@ -132,7 +139,7 @@ files = [
 minversion = "8.0"
 testpaths = ["packages", "tests"]
 # Lets the repository-level tests import their shared helpers.
-pythonpath = ["tests", "docs/guide"]
+pythonpath = ["tests", "docs/guide", "packages/agentcraft2-phoenix/src"]
 addopts = [
     "--ignore=packages/agentcraft2-ui/tests",
     # Static examples: a developer runs their tests with agentcraft2, not this repository.

@@ -56,6 +56,7 @@ class Key(enum.StrEnum):
     """Logical keys for the settings that are not per-section."""
 
     HOME = "platform.home"
+    SDK_PATH = "platform.sdk_path"
     PROFILE = "platform.profile"
     DEPLOYMENT_ENV = "platform.deployment_env"
     TELEMETRY = "platform.telemetry"
@@ -250,7 +251,7 @@ def _section_bindings() -> list[Binding]:
     return bindings
 
 
-_NEW_SINCE_THE_RENAME = frozenset({Key.HOME})
+_NEW_SINCE_THE_RENAME = frozenset({Key.HOME, Key.SDK_PATH})
 """Keys of variables that never had the earlier prefix, so no old spelling is accepted."""
 
 
@@ -286,6 +287,24 @@ def _owned_and_external_bindings() -> tuple[Binding, ...]:
             ),
             default="not set: the command line works from the current directory, and a service "
             "from the folder of its own `.env`",
+        ),
+        Binding(
+            name=f"{PREFIX}SDK_PATH",
+            key=Key.SDK_PATH,
+            description="Where the SDK keeps the tools it installs for developers: Phoenix and "
+            "Agent Lab.",
+            example="C:\\ac2-sdk",
+            details=(
+                "The SDK installs Phoenix and Agent Lab once, with itself, and `ac2 services` "
+                "starts and stops them from here. They keep packages that conflict with each "
+                "other and with the SDK's, so each has a folder of its own. What they write, "
+                "such as traces and conversations, goes to the workspace, not here. The folder "
+                "must be on a local disk: a network drive, a UNC path or a synced folder such as "
+                "OneDrive is refused, and so is anything under the roaming profile. It is read "
+                "from the process environment only. A server profile has no use for it."
+            ),
+            default="`%LOCALAPPDATA%\\agentcraft2-sdk` on Windows, which is local to the "
+            "machine and not roaming, and `~/.agentcraft2_sdk` elsewhere",
         ),
         Binding(
             name=f"{PREFIX}PROFILE",

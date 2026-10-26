@@ -51,9 +51,9 @@ def test_the_sample_server_is_created_and_pinned(workspace: Path) -> None:
         "  pinned   the input schema of each tool in registry/mcp-tools.yaml"
     )
     assert created.next_steps == [
-        "python -m agentcraft2_cli install",
-        "python -m pytest mcp-servers/hello-mcp",
-        "hello-mcp",
+        "agentcraft2 install",
+        "agentcraft2 check",
+        "agentcraft2 run hello-mcp",
     ]
     assert workspace / "mcp-servers/hello-mcp/src/hello_mcp/server.py" in created.report.created
     assert [tool.schema_sha256 for tool in read_servers(workspace)[0].tools] == list(PINS.values())

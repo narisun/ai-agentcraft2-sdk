@@ -42,10 +42,10 @@ from agentcraft2_cli.shared import (
     RULES_FILE,
     TOOLS_FILE,
     agents_text,
-    pinned,
     read_agents,
     read_servers,
     rules_text,
+    synced,
     tools_text,
 )
 from agentcraft2_cli.workspace import (
@@ -262,11 +262,20 @@ class Scaffolder:
         if server is None:
             raise CliError(f"there is no MCP server called {name_or_id!r} in this workspace")
         pins = self._pin_reader(root / SERVERS_FOLDER / server.name, package_name(server.name))
-        servers = [
-            pinned(entry, pins) if entry.id == server.server_id else entry
-            for entry in read_servers(root)
-        ]
-        return write_files(root, {TOOLS_FILE: tools_text(servers)}, replace=_MAINTAINED)
+        servers = []
+        added: list[str] = []
+        dropped: list[str] = []
+        for entry in read_servers(root):
+            if entry.id == server.server_id:
+                entry, added, dropped = synced(entry, pins)
+            servers.append(entry)
+        report = write_files(root, {TOOLS_FILE: tools_text(servers)}, replace=_MAINTAINED)
+        notes = [
+            f"  added    {name}: confidential and not read-only until you set it in "
+            f"{TOOLS_FILE.as_posix()}"
+            for name in added
+        ] + [f"  dropped  {name}: the server no longer offers it" for name in dropped]
+        return replace(report, notes=report.notes + tuple(notes))
 
     # ----------------------------------------------------------------- agents
 
@@ -436,7 +445,13 @@ class Scaffolder:
 
     def _workspace_files(self, answers: WorkspaceAnswers) -> dict[PurePosixPath, str]:
         return self._renderer.render(
-            "workspace", {"name": answers.name, "owner": answers.owner, "library": answers.library}
+            "workspace",
+            {
+                "name": answers.name,
+                "owner": answers.owner,
+                "library": answers.library,
+                "var": variable_names(),
+            },
         )
 
     def _server_files(

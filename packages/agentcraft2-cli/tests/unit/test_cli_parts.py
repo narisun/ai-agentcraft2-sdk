@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path, PurePosixPath
 
 import jinja2
 import pytest
 import yaml
 
+from agentcraft2_cli.commands import common
 from agentcraft2_cli.envfiles import agent_env, mcp_env, variable_names
 from agentcraft2_cli.errors import CliError
 from agentcraft2_cli.formatting import format_python
@@ -20,6 +22,7 @@ from agentcraft2_cli.shared import (
     read_agents,
     read_servers,
     rules_text,
+    synced,
     tools_text,
 )
 from agentcraft2_cli.workspace import (
@@ -125,6 +128,41 @@ def test_a_library_source_names_where_it_installs_from(tmp_path: Path) -> None:
         LibrarySource(kind="index")
 
 
+@pytest.mark.parametrize(
+    ("installed", "required"),
+    [("0.1.0", ">=0.1,<0.2"), ("0.4.7.dev3", ">=0.4,<0.5"), ("1.4.2", ">=1.4,<2")],
+)
+def test_without_a_checkout_a_workspace_requires_the_installed_sdk(
+    monkeypatch: pytest.MonkeyPatch, installed: str, required: str
+) -> None:
+    monkeypatch.setattr(common, "_checkout", lambda: None)
+    monkeypatch.setattr(common, "__version__", installed)
+    source = common.library_source(None, None)
+    assert (source.kind, source.version, source.path) == ("index", required, None)
+
+
+def test_a_checkout_or_an_explicit_choice_beats_the_installed_sdk(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(common, "__version__", "0.1.0")
+    monkeypatch.setattr(common, "_checkout", lambda: None)
+    assert common.library_source(None, ">=0.3").version == ">=0.3"
+    root = Path(__file__).resolve().parents[4]
+    assert common.library_source(root, None).kind == "path"
+    monkeypatch.setattr(common, "_checkout", lambda: root)
+    assert common.library_source(None, None).kind == "path"
+
+
+def test_an_sdk_that_is_not_installed_is_named_with_the_fix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(common, "_checkout", lambda: None)
+    monkeypatch.setattr(common, "__version__", "0.0.0")
+    with pytest.raises(CliError, match="not installed") as caught:
+        common.library_source(None, None)
+    assert "install_sdk.py" in str(caught.value)
+
+
 # ------------------------------------------------------------------ rendering
 
 
@@ -165,7 +203,8 @@ def test_a_missing_variable_or_template_is_an_error_not_empty_text() -> None:
 
 def test_the_templates_in_the_package_are_found() -> None:
     files = TemplateRenderer().render(
-        "workspace", {"name": "demo", "owner": "team", "library": ANSWERS.library}
+        "workspace",
+        {"name": "demo", "owner": "team", "library": ANSWERS.library, "var": variable_names()},
     )
     assert PurePosixPath(".gitignore") in files
     assert (
@@ -234,6 +273,32 @@ SERVER = ServerEntry(
 )
 AGENT = AgentEntry(id="hello-agent", owner="team", version="0.1.0", mcp_servers=("hello",))
 RULE = {"id": "hello-agent-uses-its-models", "actions": ["model.route"], "resources": ["default"]}
+
+
+def test_syncing_a_server_adds_what_it_offers_and_drops_what_it_stopped_offering() -> None:
+    old = "ab" * 32
+    new = "cd" * 32
+    entry, added, dropped = synced(SERVER, {"hello.add": old, "hello.divide": new})
+    assert (added, dropped) == (["hello.add", "hello.divide"], ["hello.greet"])
+    assert [tool.name for tool in entry.tools] == ["hello.add", "hello.divide"]
+    # What is not known about a new tool is set to the safe side, for the developer to change.
+    first = entry.tools[0]
+    assert (first.version, first.classification.name, first.read_only) == (
+        "0.1.0",
+        "CONFIDENTIAL",
+        False,
+    )
+    assert first.schema_sha256 == old
+
+
+def test_a_server_that_reported_nothing_is_left_as_it_is() -> None:
+    assert synced(SERVER, {}) == (SERVER, [], [])
+
+
+def test_syncing_keeps_what_the_developer_set_on_a_tool_that_is_still_offered() -> None:
+    entry, added, dropped = synced(SERVER, {"hello.greet": "ab" * 32})
+    assert (added, dropped) == ([], [])
+    assert entry.tools == (replace(SERVER.tools[0], schema_sha256="ab" * 32),)
 
 
 def test_the_registries_round_trip_through_their_files(tmp_path: Path) -> None:

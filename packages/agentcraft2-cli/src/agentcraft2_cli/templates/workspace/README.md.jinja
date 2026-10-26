@@ -8,6 +8,24 @@ Run the commands below from **this workspace's root folder**, where
 Installing packages requires access to your approved package index or a
 folder of Python wheels. The default tests use scripted models and local fixtures.
 
+## The commands you will use
+
+`ac2` is the short name of `agentcraft2`, installed with the CLI. Where your Python's
+scripts folder is not on `PATH`, `python -m agentcraft2_cli` takes its place. Each command
+has `--help` with examples.
+
+| Command | What it does |
+| --- | --- |
+| `ac2 new agent <name>` | Add an agent with its tests (`--mcp <server>` to let it call a server's tools). |
+| `ac2 new mcp <name>` | Add an MCP server over sample data, or your own with `--from-csv`. |
+| `ac2 install` | Install this workspace's agents and MCP servers and the development tools. |
+| `ac2 services` | List Phoenix, the viewer for traces, and start and stop it. |
+| `ac2 doctor` | Verify the configuration of everything; each failure says what to fix. |
+| `ac2 run <service>` | Start a service. A failure to start shows the exact message and stack trace. |
+| `ac2 logs [service]` | Read what a service wrote while it ran. |
+| `ac2 errors [service]` | List what failed, with the stack traces. |
+| `ac2 check` | Lint, format, types, tests and the policy samples: what CI runs. |
+
 ## Select Python
 
 Use your team's approved Python and pip for this workspace's agents and MCP servers.
@@ -43,7 +61,9 @@ PYTHON=python3
 ```
 
 If this checkout moved, update its path in `agentcraft2.toml` and the variable
-above. Install the SDK once, with its own installer, using the selected Python:
+above. Install the SDK once from that checkout with its own installer, using the selected
+Python. It builds and installs the SDK and puts its tools, such as Phoenix for traces, in the
+SDK's own folder (`{{ var.sdk_path }}`), apart from this workspace:
 
 ```bat
 "%PYTHON%" "%LIBRARY%/tools/install_sdk.py"
@@ -84,9 +104,10 @@ that prefix with `"$PYTHON"` to use the selected Python.
 "%PYTHON%" -m agentcraft2_cli check
 ```
 
-`install` uses this Python's pip to install this workspace's own services and
-development tools. It never installs the SDK; it stops and tells you how if the SDK is missing.
-Run it again after adding a service or changing dependencies. `check` runs lint,
+`install` uses this Python's pip to install this workspace's own agents and MCP servers
+and the development tools. It never installs the SDK or its tools; the SDK's installer does
+that, and `install` stops and tells you how if the SDK is missing. Run it again after adding
+a service or changing dependencies. `check` runs lint,
 formatting, type checks, tests, and policy samples. To run only the tests:
 
 ```bat
@@ -237,7 +258,8 @@ library version for repeatable CI runs.
 | `registry/agents.yaml` | Agents and the MCP servers each may call |
 | `registry/mcp-tools.yaml` | Servers, tools, and pins of their input schemas |
 | `policies/agentcraft2/rules/data.yaml` | Allow rules; unmatched requests are denied |
-| `tests/` | Workspace tests and tests of agents together with servers |
+| `pyproject.toml` | The workspace's development tools (pytest, ruff, mypy). A service's own dependencies are in `agents/<name>/pyproject.toml` or `mcp-servers/<name>/pyproject.toml` |
+| `tests/` | Workspace tests and tests of an agent together with a server (for example `tests/test_<agent>_with_<server>.py`). Each service also has its own `tests/` folder for its own tests |
 | `examples/read_trace.py` | Read a model trace as formatted JSON |
 | `docs/verified-anthropic-run.md` | Annotated real model calls and checkpoint snapshots |
 | `docs/samples/verified-anthropic/` | Selected-field samples from the verified run |

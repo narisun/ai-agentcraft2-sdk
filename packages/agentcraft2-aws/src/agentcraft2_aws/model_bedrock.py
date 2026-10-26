@@ -37,7 +37,13 @@ class BedrockChatModelProvider:
         try:
             from langchain_aws import ChatBedrockConverse
         except ImportError as exc:
-            raise ConfigurationError(f"{_WHAT} is not installed; {_INSTALL_HINT}") from exc
+            raise ConfigurationError(
+                f"{_WHAT} is not installed; {_INSTALL_HINT}",
+                fix=(
+                    'in a workspace, add "agentcraft2-aws[bedrock]" to the service\'s '
+                    "dependencies in its pyproject.toml, then run 'agentcraft2 install'"
+                ),
+            ) from exc
         self._chat_model = ChatBedrockConverse
         self._sessions = sessions
         # The model pipeline's resilience stage owns retries; one SDK attempt each.

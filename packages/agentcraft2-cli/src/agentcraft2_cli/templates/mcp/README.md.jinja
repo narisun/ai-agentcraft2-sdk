@@ -139,6 +139,36 @@ These file paths are relative to this service folder:
 {% endif %}
 | `.env.example` | How the service is configured locally |
 
+## Write your own tools
+
+A tool is an async function marked `@server.tool(name="{{ server_id }}.<tool>")` in
+`src/{{ package }}/server.py`. It does not need a data source. After you add, change or
+remove tools:
+
+1. Write a test that calls the tool as a role (copy one in `tests/`). If an agent is linked to
+   this server, the test `tests/test_<agent>_with_{{ package }}.py` in the workspace's own
+   `tests/` folder calls one of this server's tools: update it too.
+2. From the workspace root, run `"%PYTHON%" -m agentcraft2_cli registry pin {{ server_id }}`.
+   It adds new tools to `registry/mcp-tools.yaml`, drops tools you removed and pins every
+   input schema. A new tool starts as confidential and not read-only: open its entry and set
+   `classification`, `read_only` and `description`.
+3. Run `"%PYTHON%" -m agentcraft2_cli check`.
+
+{% if sample %}
+**Replacing the sample.** `greet`, `people_by_team`, `data/`, `queries/` and the
+`{{ var.data_sources }}` line in `.env.example` and `.env` belong together. Once your own
+tools replace them, remove all of them, and remove `source = services.data_source(DATA_SOURCE)`
+and `DATA_SOURCE` from `server.py` and `__init__.py`. The rules `...-managers-see-everything`
+and `...-analysts-see-no-email` in the workspace's `policies/agentcraft2/rules/data.yaml` and
+their samples then guard nothing and can go too.
+
+{% endif %}
+**Telling the model why a call failed.** Raise
+`ToolError("reason")` (`from mcp.server.mcpserver.exceptions import ToolError`) for a failure
+you expected, such as a bad argument. Its message reaches the model, which can correct the
+call. Any other exception shows the caller only `Error executing tool <name>`, and its text
+stays in this server's log, because an unexpected error can reveal internals.
+
 {% if plan.notes or plan.deployed %}
 ## Review data settings for deployment
 
@@ -166,10 +196,10 @@ These file paths are relative to this service folder:
    declares its parameters, its row limit and its classification.
 2. Write a failing test that calls the new tool as a role and says what that
    role should see.
-3. Add the tool in `src/{{ package }}/server.py` and list it under `{{ server_id }}`
-   in the workspace's `registry/mcp-tools.yaml`.
+3. Add the tool in `src/{{ package }}/server.py`.
 4. From the workspace root, run
-   `"%PYTHON%" -m agentcraft2_cli registry pin {{ server_id }}` to pin its arguments.
+   `"%PYTHON%" -m agentcraft2_cli registry pin {{ server_id }}`. It lists the tool in
+   `registry/mcp-tools.yaml` and pins its arguments; then set the tool's classification there.
 5. Update the workspace's `policies/agentcraft2/rules/data.yaml` for any new roles
    or columns to mask, and add samples in `tests/policy-samples.yaml`.
 6. Run `"%PYTHON%" -m agentcraft2_cli check` from the workspace root.

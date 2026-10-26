@@ -82,8 +82,17 @@ async def test_greet_says_hello(running: Running) -> None:
     result = await call_tool_as(
         services, server, "{{ server_id }}.greet", {"name": "Ada"}, roles=["{{ role }}"]
     )
-    assert not result.is_error
+    assert not result.is_error, mcp_result_text(result)
     assert mcp_result_text(result) == "Hello, Ada! This is {{ name }}."
+
+
+async def test_a_failure_the_caller_can_act_on_reaches_the_model(running: Running) -> None:
+    services, server = running
+    result = await call_tool_as(
+        services, server, "{{ server_id }}.greet", {"name": "  "}, roles=["{{ role }}"]
+    )
+    assert result.is_error
+    assert "give the name of the person to greet" in mcp_result_text(result)
 
 
 async def test_a_manager_sees_every_column(running: Running) -> None:
@@ -91,6 +100,7 @@ async def test_a_manager_sees_every_column(running: Running) -> None:
     result = await call_tool_as(
         services, server, "{{ server_id }}.people_by_team", {"team": "payments"}, roles=["manager"]
     )
+    assert not result.is_error, mcp_result_text(result)
     table = result.structured_content
     assert table["columns"] == ["person_id", "name", "team", "email"]
     assert table["rows"] == [
@@ -107,6 +117,7 @@ async def test_an_analyst_sees_people_but_not_their_email(
     result = await call_tool_as(
         services, server, "{{ server_id }}.people_by_team", {"team": "risk"}, roles=["analyst"]
     )
+    assert not result.is_error, mcp_result_text(result)
     table = result.structured_content
     assert table["rows"] == [[105, "Eli Ember", "risk", MASK]]
     assert table["masked_columns"] == ["email"]
@@ -137,7 +148,7 @@ async def test_a_team_nobody_is_in_is_an_empty_table_not_an_error(running: Runni
     result = await call_tool_as(
         services, server, "{{ server_id }}.people_by_team", {"team": "nobody"}, roles=["manager"]
     )
-    assert not result.is_error
+    assert not result.is_error, mcp_result_text(result)
     assert result.structured_content["rows"] == []
 {% else %}
 {% if rest %}

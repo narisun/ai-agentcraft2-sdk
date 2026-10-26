@@ -56,8 +56,8 @@ def test_every_owned_binding_accepts_its_legacy_spelling() -> None:
     assert owned
     for binding in owned:
         legacy = LEGACY_PREFIX + binding.name.removeprefix(PREFIX)
-        if binding.key == Key.HOME:
-            # It never had the earlier prefix, so there is nothing to carry over.
+        if binding.key in {Key.HOME, Key.SDK_PATH}:
+            # They never had the earlier prefix, so there is nothing to carry over.
             assert legacy not in binding.deprecated_names
             continue
         assert legacy in binding.deprecated_names, binding.name

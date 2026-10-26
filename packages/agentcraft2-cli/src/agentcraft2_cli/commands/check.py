@@ -9,9 +9,10 @@ import click
 from agentcraft2_cli.commands.common import pass_toolbox, workspace_option, workspace_root
 from agentcraft2_cli.commands.rules import policy_test
 from agentcraft2_cli.diagnostics import service_folder
-from agentcraft2_cli.errors import CliError
+from agentcraft2_cli.errors import CliError, invocation
+from agentcraft2_cli.names import package_name
 from agentcraft2_cli.toolbox import Toolbox
-from agentcraft2_cli.workspace import load_answers
+from agentcraft2_cli.workspace import WorkspaceAnswers, load_answers
 
 __all__ = ["CHECKS", "check", "evals"]
 
@@ -24,21 +25,62 @@ CHECKS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
 """Each check: its name, the tool module, and the tool's arguments."""
 
 
+def _require_installed(tools: Toolbox, answers: WorkspaceAnswers) -> None:
+    """Stop at once, with the fix, when a service has not been installed.
+
+    The tests import each service as a package. Without 'install' they fail to collect with
+    a ModuleNotFoundError that says nothing about what to do.
+    """
+    missing = sorted(
+        name for name in answers.service_names() if not tools.is_installed(package_name(name))
+    )
+    if missing:
+        raise CliError(
+            f"{', '.join(missing)} {'is' if len(missing) == 1 else 'are'} not installed here",
+            expected="every service of the workspace installed, so its tests can import it",
+            actual=f"not importable: {', '.join(package_name(name) for name in missing)}",
+            fix=f"run '{invocation()} install' from the workspace, then run the checks again",
+        )
+
+
 @click.command()
 @click.option("--opa", "with_opa", is_flag=True, help="Also check that OPA agrees with the rules.")
 @click.option("--keep-going", is_flag=True, help="Run every check even after one fails.")
+@click.option(
+    "--fix",
+    "fix_first",
+    is_flag=True,
+    help="First fix what ruff can: lint fixes and formatting. Review the changes it makes.",
+)
 @workspace_option
 @click.pass_context
 @pass_toolbox
 def check(
-    tools: Toolbox, context: click.Context, with_opa: bool, keep_going: bool, workspace: Path | None
+    tools: Toolbox,
+    context: click.Context,
+    with_opa: bool,
+    keep_going: bool,
+    fix_first: bool,
+    workspace: Path | None,
 ) -> None:
     """Run what CI runs: lint, format, types, tests and the policy samples.
 
     The same command runs on a developer's machine and in the workspace's CI
     workflow, so a change that passes here passes there.
+
+    \b
+    Examples:
+      ac2 check                 stop at the first failing check
+      ac2 check --keep-going    run every check and list all that fail
+      ac2 check --opa           also check that OPA agrees with the in-process rules
     """
     root = workspace_root(workspace)
+    _require_installed(tools, load_answers(root))
+    if fix_first:
+        for fixing in (("check", "--fix", "."), ("format", ".")):
+            click.echo(f"== fix: python -m ruff {' '.join(fixing)}")
+            # What ruff cannot fix is reported by the checks below.
+            tools.run_tool("ruff", fixing, root)
     results: list[tuple[str, bool]] = []
     for name, module, arguments in CHECKS:
         click.echo(f"== {name}: python -m {module} {' '.join(arguments)}".rstrip())
@@ -60,14 +102,28 @@ def check(
         click.echo(f"  {'ok  ' if passed else 'FAIL'}  {name}")
     failed = [name for name, passed in results if not passed]
     if failed:
+        skipped = [name for name, *_ in CHECKS if name not in {done for done, _ in results}]
+        if not keep_going:
+            skipped.append("policy samples")  # they run only when nothing before them failed
+        fix = "read the output of each failed check above"
+        if skipped:
+            fix += (
+                f"; {', '.join(skipped)} did not run: add --keep-going to run every check"
+                " after a failure"
+            )
+        fix += (
+            "; for lint and format problems, add --fix to let ruff correct them"
+            if {"lint", "format"} & set(failed)
+            else ""
+        )
         raise CliError(
             f"{len(failed)} check{'s' if len(failed) != 1 else ''} failed: {', '.join(failed)}",
-            fix="read the output of each failed check above; run it alone to iterate",
+            fix=fix,
         )
     click.echo("Every check passed.")
 
 
-@click.command("eval")
+@click.command("eval", short_help="Run the evals of a service with a real model.")
 @click.argument("service", required=False)
 @click.option(
     "--accept",

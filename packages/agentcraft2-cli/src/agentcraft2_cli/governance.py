@@ -272,12 +272,17 @@ def server_offers(plan: DataPlan) -> str:
 
 
 def agent_entry(agent: AgentAnswers, owner: str) -> AgentEntry:
-    """Return the registry entry of a new agent."""
+    """Return the registry entry of a new agent.
+
+    It carries the address the agent serves on this machine, so that Agent Lab, which may call
+    only agents with a loopback address, can be pointed at it.
+    """
     return AgentEntry(
         id=agent.name,
         owner=owner,
         version=VERSION,
         description=agent.description,
+        url=f"http://127.0.0.1:{agent.port}",
         mcp_servers=agent.mcp_servers,
         model_aliases=("default",),
         classification_ceiling=_CEILING,

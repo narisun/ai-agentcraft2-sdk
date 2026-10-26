@@ -14,10 +14,19 @@ from __future__ import annotations
 from pathlib import Path
 
 from agentcraft2_core.config.bindings import DEFAULT_BINDINGS, Key
+from agentcraft2_core.config.sdk_location import default_sdk_path
 from agentcraft2_core.config.sources import EnvironConfigSource
 from agentcraft2_core.contracts import ConfigSource, ConfigurationError
 
-__all__ = ["STATE_FOLDER", "home_variable", "project_home", "state_dir"]
+__all__ = [
+    "STATE_FOLDER",
+    "default_sdk_path",
+    "home_variable",
+    "project_home",
+    "sdk_path",
+    "sdk_variable",
+    "state_dir",
+]
 
 STATE_FOLDER = ".agentcraft2"
 """The folder under the home, or beside a service's ``.env``, that holds generated state."""
@@ -52,6 +61,35 @@ def project_home(source: ConfigSource | None = None) -> Path | None:
             fix=f"create the folder, or correct {name}",
         )
     return home.resolve()
+
+
+def sdk_variable() -> str:
+    """Return the name of the variable that names the SDK's own folder."""
+    return next(binding.name for binding in DEFAULT_BINDINGS if binding.key == Key.SDK_PATH)
+
+
+def sdk_path(source: ConfigSource | None = None) -> Path:
+    """Return the folder the SDK keeps Phoenix and Agent Lab in.
+
+    Args:
+        source: Where ``AC2_SDK_PATH`` is read from; by default the process environment.
+
+    Raises:
+        ConfigurationError: If it is set to a path that is not absolute.
+    """
+    name = sdk_variable()
+    raw = (source if source is not None else EnvironConfigSource()).get(name)
+    if raw is None or not raw.strip():
+        return default_sdk_path()
+    chosen = Path(raw.strip()).expanduser()
+    if not chosen.is_absolute():
+        raise ConfigurationError(
+            f"{name} is not an absolute path",
+            expected="a full path, such as C:\\ac2-sdk or /opt/ac2-sdk",
+            actual=repr(raw.strip()),
+            fix=f"write the whole path in {name}",
+        )
+    return chosen
 
 
 def state_dir(beside: Path, source: ConfigSource | None = None) -> Path:

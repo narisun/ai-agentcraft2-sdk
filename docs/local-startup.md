@@ -7,9 +7,9 @@ browser. For Anthropic answers, you also need an approved API key and model. Use
 provider approved to receive the example business data.
 
 The `setup-local`, `start-local`, `stop-local` and `start-phoenix` launchers have been
-removed. `ac2 services` is planned to install, start and stop Agent Lab and Phoenix; until
-it is released you start each piece yourself, as below. Phoenix has no start command in
-this checkout, so the walkthrough runs without traces.
+removed. Phoenix is installed with the SDK and `ac2 services start phoenix` starts it (see
+[the `ac2` reference](cli.md#services)); Agent Lab will join `ac2 services`, and until then
+you start it yourself, as below. The walkthrough works with or without Phoenix.
 
 Commands are shown for **Command Prompt (cmd.exe)**. On macOS/Linux, open a bash or zsh
 terminal and use `python3` for `python`, `/` for `\`, and `cat` for `type`.
@@ -20,8 +20,8 @@ terminal and use `python3` for `python`, `/` for `\`, and `cat` for `type`.
    `python tools/install_sdk.py --dev --editable` from the repository root (see the
    [README](../README.md#working-on-the-library)). Then install the rmprep workspace into the
    same Python by following [its README](../examples/rmprep/README.md).
-2. **Agent Lab**, in an environment of its own, because Chainlit needs MCP 1.x and the agents
-   need MCP 2.x. Follow [step 1 of the Agent Lab guide](../packages/agentcraft2-ui/README.md#1-prepare-the-ui-packages).
+2. **Agent Lab** is installed by the same command, in a folder of its own (Chainlit needs MCP
+   1.x and the agents need MCP 2.x), so there is nothing more to install.
 
 For Anthropic answers, install the model dependency with
 `python -m pip install "agentcraft2-core[anthropic]"` in the agents' Python. For Bedrock, use
@@ -59,19 +59,19 @@ changing a setting. Model access and authentication still come from your AWS acc
 ## 3. Start the services and open Agent Lab
 
 Start the MCP data server and the agent, each in its own terminal at the repository root
-(the [Agent Lab guide](../packages/agentcraft2-ui/README.md#2-start-your-agent-and-register-its-address)
-has the commands and explains the registry entry). Then initialise Agent Lab once and start it:
+(`ac2 run rmprep-data --workspace examples\rmprep` and `ac2 run rmprep --workspace examples\rmprep`;
+the [Agent Lab guide](../packages/agentcraft2-ui/README.md) has more). Then start Agent Lab; it
+configures itself from the workspace's registry every time it starts:
 
 ```bat
-"%LAB_PYTHON%" -m agentcraft2_ui init --env-file examples\rmprep\agents\rmprep\.env --agent rmprep --artifacts-agent rmprep --allow-url http://127.0.0.1:8000
-"%LAB_PYTHON%" -m agentcraft2_ui serve
+ac2 services start lab --workspace examples\rmprep
 ```
 
-Open [Agent Lab](http://127.0.0.1:8765). In a second terminal at the repository root, read
-the local access code:
+Open [Agent Lab](http://127.0.0.1:8765). The command printed where the local access code is; read it
+in a second terminal:
 
 ```bat
-type .agentcraft2\ui\access-code
+type examples\rmprep\.agentcraft2\services\lab\data\access-code
 ```
 
 Sign in with that code, then select **Choose agent → Start chat with rmprep**. This code
@@ -174,23 +174,22 @@ in the [library README](../README.md#working-on-the-library) and
 | Symptom | First step |
 | --- | --- |
 | Missing package or mismatched Python | Install the SDK and the rmprep workspace into the Python that runs the agent; check your approved pip index and wheels. |
-| Login asks for a code | Run `type .agentcraft2\ui\access-code`. Use `127.0.0.1:8765` consistently. |
+| Login asks for a code | Read the file `ac2 services start lab` printed (`.agentcraft2\services\lab\data\access-code` in the workspace). Use `127.0.0.1:8765` consistently. |
 | The agent answers with `fake` | Check the model settings in rmprep's `.env`. Set provider and model ID along with the key. Clear an unwanted shell override with `set AC2_MODEL_PROVIDER=` (`unset AC2_MODEL_PROVIDER` on macOS/Linux), then restart. A shell that still exports the old `EAP_MODEL_PROVIDER` spelling needs it cleared the same way. |
 | A port is in use | Stop the other service with Ctrl+C in its own window. Existing processes are left alone. |
 | Cache hit is 0% | Check cache writes. A cold request, changed prompt/context, or expired entry can write a prefix; a later matching request can read it. |
 | The answer revises itself | Drafts are provisional until length, citation and evidence checks pass. |
 | Wrong memo is discussed | Keep the same chat and name the reference from **Memo details**. Viewing an older version alone does not select its model context. |
 | An old layout appears in Chrome | Stop/restart, then reload the tab. Wide tables scroll within their own container. |
-| Registry pins or local identity changed | Review the changes, then refresh UI configuration below. Saved conversations remain. |
+| Registry pins or local identity changed | Run `ac2 services stop lab` and `ac2 services start lab`: the configuration is written again. Saved conversations remain. |
 
-After reviewing registry or identity changes, stop Agent Lab and refresh its
-configuration from the repository root:
+After reviewing registry or identity changes, stop Agent Lab and start it again:
 
 ```bat
-"%LAB_PYTHON%" -m agentcraft2_ui init --config .agentcraft2\ui\config.json --env-file examples\rmprep\agents\rmprep\.env --agent rmprep --artifacts-agent rmprep --allow-url http://127.0.0.1:8000 --overwrite
-"%LAB_PYTHON%" -m agentcraft2_ui serve
+ac2 services stop lab
+ac2 services start lab --workspace examples\rmprep
 ```
 
-Startup checks saved bindings and preserves existing UI configuration. Changing
-the configured identity makes the old identity's conversations inaccessible to
+Starting writes the configuration again from the registry and keeps conversations and secrets.
+Changing the configured identity makes the old identity's conversations inaccessible to
 the new identity; it does not delete them.

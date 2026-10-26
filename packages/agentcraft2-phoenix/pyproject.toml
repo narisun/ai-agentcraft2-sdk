@@ -1,0 +1,23 @@
+[project]
+name = "agentcraft2-phoenix"
+version = "0.1.0"
+description = "Phoenix for agentcraft2: a trace viewer that runs on the developer's machine only"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = ["jinja2>=3.1"]
+
+[project.optional-dependencies]
+# The viewer itself. Its release is pinned: the page rewrite and the server shims were written
+# for it, and the server refuses to start with any other (see agentcraft2_phoenix.PINNED_VERSION).
+viewer = ["arize-phoenix==20.21.1"]
+
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agentcraft2_phoenix"]
+
+[tool.agentcraft2-sdk]
+development-environment = "phoenix"

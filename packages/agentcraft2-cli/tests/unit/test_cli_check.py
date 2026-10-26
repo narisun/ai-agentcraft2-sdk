@@ -69,6 +69,37 @@ def test_a_failed_check_stops_the_rest_and_says_which(
     assert "1 check failed: types" in captured.err
 
 
+def test_a_failure_names_the_checks_that_did_not_run_and_how_to_run_them(
+    workspace: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    tools = Tools(failing=["ruff"])
+    assert main(["check", "--workspace", str(workspace)], toolbox=toolbox(tools)) == 1
+    err = capsys.readouterr().err
+    assert "format, types, tests, policy samples did not run" in err
+    assert "--keep-going" in err
+    assert "--fix" in err  # lint failed, and ruff can often correct it
+
+
+def test_a_failure_that_ruff_cannot_correct_does_not_offer_fix(
+    workspace: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    tools = Tools(failing=["pytest"])
+    assert main(["check", "--workspace", str(workspace)], toolbox=toolbox(tools)) == 1
+    err = capsys.readouterr().err
+    assert "policy samples did not run" in err
+    assert "--fix" not in err
+
+
+def test_fix_lets_ruff_correct_before_anything_is_checked(workspace: Path) -> None:
+    tools = Tools()
+    assert main(["check", "--fix", "--workspace", str(workspace)], toolbox=toolbox(tools)) == 0
+    assert [(module, arguments) for module, arguments, _ in tools.ran][:2] == [
+        ("ruff", ("check", "--fix", ".")),
+        ("ruff", ("format", ".")),
+    ]
+    assert ("ruff", ("check", ".")) in [(module, arguments) for module, arguments, _ in tools.ran]
+
+
 def test_keep_going_runs_every_check(workspace: Path, capsys: pytest.CaptureFixture[str]) -> None:
     tools = Tools(failing=["ruff"])
     command = ["check", "--keep-going", "--workspace", str(workspace)]

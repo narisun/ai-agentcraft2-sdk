@@ -25,7 +25,7 @@ from agentcraft2_cli.workspace import load_answers
 __all__ = ["deploy"]
 
 
-@click.command()
+@click.command(short_help="Write the Terraform and Dockerfiles that run a service.")
 @click.argument("service")
 @click.option(
     "--target",

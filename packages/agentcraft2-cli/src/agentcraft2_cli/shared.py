@@ -25,7 +25,14 @@ from agentcraft2_core.adapters.registry_documents import (
     tools_document,
 )
 from agentcraft2_core.adapters.strict_yaml import yaml_problem
-from agentcraft2_core.contracts import AgentCraft2Error, AgentEntry, ServerEntry, describe
+from agentcraft2_core.contracts import (
+    AgentCraft2Error,
+    AgentEntry,
+    Classification,
+    ServerEntry,
+    ToolEntry,
+    describe,
+)
 
 __all__ = [
     "AGENTS_FILE",
@@ -36,6 +43,7 @@ __all__ = [
     "read_agents",
     "read_servers",
     "rules_text",
+    "synced",
     "tools_text",
 ]
 
@@ -124,6 +132,34 @@ def pinned(server: ServerEntry, pins: Mapping[str, str]) -> ServerEntry:
             for tool in server.tools
         ),
     )
+
+
+def synced(
+    server: ServerEntry, pins: Mapping[str, str]
+) -> tuple[ServerEntry, list[str], list[str]]:
+    """Return ``server`` registered as the server itself reports its tools.
+
+    ``pins`` holds the tools the server offers, with their schema pins. A tool the server
+    offers that the registry lacks is registered with the safest settings: confidential, not
+    read-only, version 0.1.0 and no description, for the developer to set. A registered tool
+    the server no longer offers is dropped. A tool in both keeps its version, classification,
+    read-only flag and description, and gets the new pin.
+
+    Returns:
+        The entry, the names of the tools added and the names of the tools dropped.
+    """
+    if not pins:
+        return server, [], []  # nothing was reported, so nothing is known to have changed
+    known = {tool.name for tool in server.tools}
+    kept = tuple(
+        replace(tool, schema_sha256=pins[tool.name]) for tool in server.tools if tool.name in pins
+    )
+    dropped = [tool.name for tool in server.tools if tool.name not in pins]
+    added = [name for name in pins if name not in known]
+    new = tuple(
+        ToolEntry(name, "0.1.0", Classification.CONFIDENTIAL, False, pins[name]) for name in added
+    )
+    return replace(server, tools=kept + new), added, dropped
 
 
 def _rule_ids(text: str, what: str) -> list[str]:

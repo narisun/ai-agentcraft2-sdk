@@ -29,9 +29,18 @@ from agentcraft2_core.contracts import (
 )
 from agentcraft2_core.contracts.redaction import redact, shorten
 
-__all__ = ["error_fields", "explain", "raised_at", "report_error", "shows_details", "your_code"]
+__all__ = [
+    "error_fields",
+    "explain",
+    "raised_at",
+    "report_error",
+    "shows_details",
+    "stack_trace",
+    "your_code",
+]
 
 _MAX_TEXT = 2_000
+_MAX_TRACEBACK = 12_000
 _MAX_FRAMES = 8
 _LIBRARY_PARTS = (
     "/agentcraft2_core/",
@@ -103,6 +112,16 @@ def _cause_text(cause: BaseException, *, details: bool) -> str:
     return f"{text} (at {where})" if where and not isinstance(cause, AgentCraft2Error) else text
 
 
+def stack_trace(error: BaseException) -> str:
+    """Return the full traceback of ``error``, chained causes included, for a developer.
+
+    Anything shaped like a credential is replaced. It is cut from the front when it is very
+    long: the end holds the line that raised and the error's own message.
+    """
+    text = redact("".join(traceback.format_exception(error)))
+    return text if len(text) <= _MAX_TRACEBACK else "...\n" + text[-_MAX_TRACEBACK:]
+
+
 def explain(error: BaseException, *, details: bool = True) -> str:
     """Return a few lines that tell a developer what went wrong and where to look.
 
@@ -157,6 +176,9 @@ def error_fields(error: BaseException, *, details: bool = False) -> dict[str, An
             fields["error_detail"] = shorten(redact(error.detail), _MAX_TEXT)
     elif details:
         fields["error"] = describe(error, limit=_MAX_TEXT).split(": ", 1)[-1]
+    if details:
+        # The whole stack, for a developer's machine only: it carries the exact message.
+        fields["error_traceback"] = stack_trace(error)
     notes = _notes(error)
     if notes and (isinstance(error, AgentCraft2Error) or details):
         fields["error_notes"] = notes
@@ -174,28 +196,32 @@ def report_error(
     error: BaseException,
     *,
     details: bool = True,
+    trace: bool = True,
     stream: IO[str] | None = None,
 ) -> int:
     """Tell the person who started ``program`` why it stopped, and return its exit code.
 
     The entry point of a service or a command calls this with the error that
-    ended it. The library's own errors are explained in a few lines. Any other
-    error is a bug, so with ``details`` on its full traceback comes first.
+    ended it. With ``details`` on, the exact message and the full stack trace
+    come first, then the same few lines as ever: what went wrong, what was
+    expected and found, and how to fix it.
 
     Args:
         program: The command's name, put before the explanation.
         error: What ended it.
-        details: Show what may hold caller content, and full tracebacks of bugs.
-            On for a developer's machine; off where standard error is kept with
-            the service's logs.
+        details: Show what may hold caller content, and the stack trace. On for
+            a developer's machine; off where standard error is kept with the
+            service's logs.
+        trace: Whether the stack trace comes with the details. A command that
+            reports a mistake of the person at the keyboard leaves it out.
         stream: Where to write. Standard error by default.
 
     Returns:
         ``1``, the exit code of a program that failed.
     """
     out = stream if stream is not None else sys.stderr
-    if details and not isinstance(error, AgentCraft2Error):
-        out.write("".join(traceback.format_exception(error)))
+    if details and trace:
+        out.write(stack_trace(error))
     out.write(f"{program}: {explain(error, details=details)}\n")
     return 1
 

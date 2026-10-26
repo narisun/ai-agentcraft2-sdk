@@ -573,6 +573,8 @@ async def test_a_server_can_check_itself_against_the_registry_at_startup() -> No
     assert "accounts.broken is offered but not registered" in message
     assert "accounts.close has no schema pin" in message
     assert "the input schema of accounts.lookup does not match its pin" in message
+    # It says what to do about it, not only what is wrong.
+    assert "agentcraft2 registry pin accounts" in message
 
 
 def test_result_text_names_content_that_is_not_text() -> None:

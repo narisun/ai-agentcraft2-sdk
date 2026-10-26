@@ -26,16 +26,14 @@ development preview; use the [release scope](docs/release-scope.md) for support 
 Agent Lab is the browser simulator for testing agents. It runs in a Python environment of
 its own, because its chat library (Chainlit) needs MCP 1.x and the agents need MCP 2.x.
 The one-line launchers that used to set this up (`setup-local`, `start-local`,
-`stop-local` and `start-phoenix`) have been removed, and `ac2 services` is
-the planned replacement for starting and stopping Agent Lab and Phoenix. Until it
-is released, follow the [Agent Lab package guide](packages/agentcraft2-ui/README.md): it
-installs Agent Lab, starts your agent and its MCP servers, and connects them.
-[Local testing](docs/local-startup.md) has the model settings and the rmprep walkthrough
-with its expected answers.
+`stop-local` and `start-phoenix`) have been removed. Phoenix, the local trace viewer, is
+installed with the SDK and `ac2 services` lists, starts and stops it, and so it does Agent
+Lab (`ac2 services start lab`, then open `http://127.0.0.1:8765`). Start your agent and its
+MCP servers with `ac2 run`; the [Agent Lab package guide](packages/agentcraft2-ui/README.md)
+has the details. [Local testing](docs/local-startup.md) has the model settings and the rmprep
+walkthrough with its expected answers.
 
-Phoenix, the local trace viewer, has no start command in this checkout until
-`ac2 services` is released. Agents run without it, and tracing stays off unless you
-turn it on.
+Agents run without Phoenix, and tracing stays off unless you turn it on.
 
 ## Run your first agent
 
@@ -254,14 +252,24 @@ PYTHON=python3
 ./install-sdk.sh --dev --editable
 ```
 
-`install-sdk.bat` and `install-sdk.sh` run `tools/install_sdk.py` with the Python in `PYTHON`
-(`python` or `python3` on your PATH when it is not set) and pass every option on; they stop
-with the fix when that Python cannot run. `tools/install_sdk.py` is the one script that builds and installs the SDK. It checks the
-environment, looks for an SDK that is already installed, builds the packages, uninstalls the
-old SDK and only then installs the new one, printing each step as it goes and stopping at the
-first problem. With `--dev --editable` it installs the local packages, optional dependencies
-and development tools. Without options it builds wheels and installs them, as a consumer
-would get them (`--no-index --find-links=...` and other pip options are passed to pip). Then run these checks from
+`install-sdk.bat` and `install-sdk.sh` run `tools/install_sdk.py` with the Python in
+`PYTHON` (`python` or `python3` on your PATH when it is not set) and pass every option on;
+they stop with the fix when that Python cannot run. `tools/install_sdk.py` is the one
+script that builds and installs the SDK, with its tools. It checks the environment, looks
+for an SDK that is already installed, builds the packages, uninstalls the old SDK and its
+tools, and only then installs the new ones, printing each step as it goes and stopping at
+the first problem. pip prints only problems, so the steps stay readable; add `--verbose` to
+see everything pip prints. It also warns about a `~gentcraft2-...` folder that an
+interrupted uninstall left behind, and says how to delete it. The tools, Phoenix for traces
+and Agent Lab to come, go in the SDK's own folder, `AC2_SDK_PATH` (by default
+`agentcraft2-sdk` in `%LOCALAPPDATA%` on Windows, never in a roaming or network folder, and
+`~/.agentcraft2_sdk` elsewhere); `ac2 services` starts and stops them. With `--dev
+--editable` it installs the local packages, optional dependencies and development tools,
+and `--no-services` leaves the tools out (CI does). Without options it builds wheels and
+installs them, as a consumer would get them (`--no-index --find-links=...` and other pip
+options are passed to pip). When it finishes it says whether the `ac2` command is on your
+PATH; if it is not (a base Python's scripts folder often is not), it names the folder and
+the `python -m agentcraft2_cli` form that works without it. Then run these checks from
 the library root, replacing `"%PYTHON%"` with `"$PYTHON"` on macOS/Linux:
 
 ```bat

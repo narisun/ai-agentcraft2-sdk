@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -114,7 +115,7 @@ def test_init_creates_workspace_docs_and_samples_without_services(
     workspace = tmp_path / "demo"
     out = capsys.readouterr().out
     assert "created  pyproject.toml" in out
-    assert "python -m agentcraft2_cli new mcp hello-mcp" in out
+    assert "agentcraft2 new mcp hello-mcp" in out
     files = tree(workspace)
     assert sorted(files) == [
         ".github/workflows/check.yml",
@@ -170,13 +171,36 @@ def test_init_again_changes_nothing_and_keeps_what_was_added(
 # ---------------------------------------------------------------------- services
 
 
+@pytest.mark.parametrize(
+    ("invoked", "program"),
+    [
+        ("C:/Python/Scripts/ac2.exe", "ac2"),
+        ("/usr/local/bin/agentcraft2", "agentcraft2"),
+        ("C:/Python/Lib/site-packages/agentcraft2_cli/__main__.py", "python -m agentcraft2_cli"),
+    ],
+)
+def test_what_a_command_suggests_next_uses_the_name_it_was_run_by(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+    invoked: str,
+    program: str,
+) -> None:
+    monkeypatch.setattr(sys, "argv", [invoked])
+    assert run("init", "demo", "--dir", tmp_path, "--owner", "team") == 0
+    out = capsys.readouterr().out
+    assert f"{program} new mcp hello-mcp" in out
+    assert f"{program} check" in out
+    assert f"{program} install" in out
+
+
 def test_new_mcp_adds_a_server_registers_it_and_adds_its_rules(
     workspace: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     assert run("new", "mcp", "hello-mcp", "--no-pin", "--workspace", workspace) == 0
     out = capsys.readouterr().out
     assert "MCP server hello-mcp (registry ID hello)" in out
-    assert "python -m pytest mcp-servers/hello-mcp" in out
+    assert " run hello-mcp" in out
     files = tree(workspace)
     service = "mcp-servers/hello-mcp/"
     assert {name.removeprefix(service) for name in files if name.startswith(service)} == {
@@ -257,6 +281,9 @@ def test_new_agent_adds_an_agent_linked_to_the_servers_it_names(
     assert 'description = "Says hello."' in files[service + "pyproject.toml"]
     (agent,) = read_agents(workspace)
     assert (agent.id, agent.mcp_servers, agent.owner) == ("hello-agent", ("hello",), "demo-team")
+    # Agent Lab calls only an agent with a loopback address, so the entry carries the agent's own.
+    assert agent.url is not None
+    assert agent.url.startswith("http://127.0.0.1:")
     assert rule_ids(workspace)[3:] == [
         "hello-agent-uses-its-models",
         "hello-agent-calls-its-own-tools",
@@ -414,8 +441,11 @@ def test_the_pin_command_writes_what_the_server_reports(workspace: Path) -> None
     report = Scaffolder(pin_reader=reader, formatter=as_written).pin(workspace, "hello")
     assert asked == [("mcp-servers/hello-mcp", "hello_mcp")]
     assert [path.name for path in report.updated] == ["mcp-tools.yaml"]
-    greet, people = read_servers(workspace)[0].tools
-    assert (greet.schema_sha256, people.schema_sha256) == ("ab" * 32, None)
+    greet, unknown = read_servers(workspace)[0].tools
+    # The tool the server offers is kept and pinned, the one it reports and the registry lacks
+    # is added, and the sample tool it no longer offers is dropped.
+    assert (greet.name, greet.schema_sha256) == ("hello.greet", "ab" * 32)
+    assert (unknown.name, unknown.schema_sha256) == ("hello.unknown", "cd" * 32)
 
 
 def test_a_workspace_is_generated_again_from_its_answers_alone(tmp_path: Path) -> None:
@@ -482,6 +512,29 @@ def test_new_mcp_pins_the_tools_and_registry_pin_does_it_again(
     assert run("registry", "pin", "hello", "--workspace", workspace, tools=pinned(pins)) == 0
     assert "updated  registry/mcp-tools.yaml" in capsys.readouterr().out
     assert read_servers(workspace)[0].tools[0].schema_sha256 == "ef" * 32
+
+
+def test_registry_pin_registers_the_tools_the_server_offers_and_drops_the_rest(
+    workspace: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    pins = {"hello.greet": "ab" * 32, "hello.people_by_team": "cd" * 32}
+    assert run("new", "mcp", "hello-mcp", "--workspace", workspace, tools=pinned(pins)) == 0
+    capsys.readouterr()
+
+    # The developer replaces the sample tools: one is renamed, one stays, one is new.
+    offered = {"hello.greet": "ab" * 32, "hello.add": "12" * 32}
+    assert run("registry", "pin", "hello", "--workspace", workspace, tools=pinned(offered)) == 0
+    captured = capsys.readouterr()
+    assert "added    hello.add" in captured.err
+    assert "dropped  hello.people_by_team" in captured.err
+    tools = {tool.name: tool for tool in read_servers(workspace)[0].tools}
+    assert list(tools) == ["hello.greet", "hello.add"]
+    assert tools["hello.add"].schema_sha256 == "12" * 32
+    assert tools["hello.greet"].description  # the generated description is kept
+
+    # Run again: nothing is left to do.
+    assert run("registry", "pin", "hello", "--workspace", workspace, tools=pinned(offered)) == 0
+    assert "nothing to do" in capsys.readouterr().out
 
 
 def test_a_server_that_cannot_be_pinned_yet_is_still_created(

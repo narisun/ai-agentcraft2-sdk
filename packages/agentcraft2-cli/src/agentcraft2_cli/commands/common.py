@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import click
 
+from agentcraft2_cli import __version__
 from agentcraft2_cli.errors import CliError
 from agentcraft2_cli.render import Report
 from agentcraft2_cli.toolbox import Toolbox
@@ -49,19 +51,41 @@ def _checkout() -> Path | None:
     return None
 
 
+def installed_specifier() -> str | None:
+    """Return the versions of the installed SDK that a workspace may require, if it is installed.
+
+    A workspace that requires them is satisfied by the SDK already installed, without a path
+    to a checkout and without a package index. Before 1.0 a new minor version may break, so
+    the range ends at the next one.
+    """
+    found = re.match(r"(\d+)\.(\d+)", __version__)
+    if found is None or __version__ == "0.0.0":
+        return None
+    major, minor = int(found[1]), int(found[2])
+    upper = f"{major}.{minor + 1}" if major == 0 else f"{major + 1}"
+    return f">={major}.{minor},<{upper}"
+
+
 def library_source(path: Path | None, version: str | None) -> LibrarySource:
-    """Return where a new workspace installs the library from."""
+    """Return where a new workspace installs the library from.
+
+    An explicit ``--lib-path`` or ``--lib-version`` wins. Without one, a command that runs from
+    a checkout uses that checkout; any other uses the versions of the SDK that is installed.
+    """
     if path is not None and version is not None:
         raise click.UsageError("give --lib-path or --lib-version, not both")
     if version is not None:
         return LibrarySource(kind="index", version=version)
     checkout = path or _checkout()
     if checkout is None:
-        raise CliError(
-            "this command is not running from a checkout of the library, so it cannot tell "
-            "where a workspace should install the library from. Give --lib-path <checkout> "
-            "or --lib-version '<specifier>'."
-        )
+        installed = installed_specifier()
+        if installed is None:
+            raise CliError(
+                "the SDK is not installed here, so there is no version to require. Install it "
+                "(python tools/install_sdk.py, in your checkout of the SDK), or give "
+                "--lib-path <checkout> or --lib-version '<specifier>'."
+            )
+        return LibrarySource(kind="index", version=installed)
     if not (checkout / "packages" / "agentcraft2-core" / "pyproject.toml").is_file():
         raise CliError(f"{checkout} is not a checkout of the library")
     return LibrarySource.from_path(checkout)

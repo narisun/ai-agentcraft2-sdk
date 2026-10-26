@@ -488,7 +488,7 @@ def main() -&gt; int:
     <tbody>
       <tr><td>Agent and MCP services</td><td>Business workflow, evidence, policy enforcement, and graph checkpoints</td><td>The approved Python it was installed into</td></tr>
       <tr><td>Agent Lab</td><td>Agent selection, displayed chat history, memo versions, and inspection pages</td><td>An environment of its own (Chainlit needs MCP 1.x); see the <a href="../packages/agentcraft2-ui/README.md#1-prepare-the-ui-packages">Agent Lab guide</a></td></tr>
-      <tr><td>Local Phoenix server, when enabled</td><td>Model/tool observations in a local SQLite database</td><td>Started by <code>ac2 services</code> once it is released; no command in this checkout starts it</td></tr>
+      <tr><td>Local Phoenix server, when enabled</td><td>Model/tool observations in a local SQLite database</td><td>Installed with the SDK; <code>ac2 services start phoenix</code> starts it</td></tr>
     </tbody>
   </table></div>
   <p>A saved UI message, a graph checkpoint, and a model input are different things.
@@ -1124,13 +1124,12 @@ AC2_MODEL_PROVIDER=fake</code></pre>
     <p>Use the <a href="local-startup.md">local startup and testing guide</a>
     for the complete walkthrough. The <code>setup-local</code>, <code>start-local</code>,
     <code>stop-local</code> and <code>start-phoenix</code> launchers have been removed, and
-    <code>ac2 services</code> is planned to install, start and stop Agent Lab and Phoenix.
-    Until it is released, install the SDK with <code>python tools/install_sdk.py --dev --editable</code>,
+    <code>ac2 services start phoenix</code> starts Phoenix, and Agent Lab will join
+    <code>ac2 services</code>. Until then, install the SDK with <code>python tools/install_sdk.py --dev --editable</code>,
     install the rmprep workspace, put Agent Lab in an environment of its own, and start the MCP
     server, the agent and Agent Lab each in its own Command Prompt, as the
     <a href="../packages/agentcraft2-ui/README.md">Agent Lab guide</a> shows. Configure your
-    model in the rmprep service's <code>.env</code>. Phoenix has no start command in this
-    checkout, so this walkthrough runs without traces.</p>
+    model in the rmprep service's <code>.env</code>. Start Phoenix too if you want traces.</p>
     <p>Open <code>http://127.0.0.1:8765</code>. Read the login code in another
     Command Prompt at the repository root:</p>
 <pre><code class="language-bat">type .agentcraft2\ui\access-code</code></pre>
@@ -1152,9 +1151,9 @@ AC2_MODEL_PROVIDER=fake</code></pre>
   <details id="phoenix-local">
     <summary>How do I enable Phoenix and check a conversation?</summary>
     <p>Phoenix shows what the model received, which MCP tools it called, and how
-    it answered. It runs locally with Python, pip and SQLite. <code>ac2 services</code>
-    is planned to install, start and stop it; until it is released, no command in this
-    checkout starts a Phoenix server. With one listening on this machine, follow these steps.</p>
+    it answered. It runs locally with Python, pip and SQLite. Start it with
+    <code>ac2 services start phoenix</code> (<code>ac2 services stop phoenix</code> stops it),
+    then follow these steps.</p>
     <ol>
       <li><strong>Enable tracing.</strong> Add these settings to the agent's own
       <code>.env</code>. Keep your model settings and API key.
@@ -2064,8 +2063,8 @@ async def classify(
     answer, streaming and checkpoint interfaces keep their behavior.</p>
     <p>To run Phoenix on your own machine with Python and pip, follow
     <a href="phoenix-trial.md">Trace agents with Phoenix</a>. Enable Phoenix in the
-    agent's <code>.env</code>; <code>ac2 services</code> is planned to start the local Phoenix
-    server, which keeps SQLite traces. The agent
+    agent's <code>.env</code> and start the local Phoenix server with
+    <code>ac2 services start phoenix</code>; it keeps SQLite traces. The agent
     adds an <strong>Open trace in Agent Lab</strong> link to each response, opening the configured Phoenix trace. The walkthrough
     lists the opt-in settings and a verified Anthropic conversation. Traces go
     only to a Phoenix on your own machine, with no key; see

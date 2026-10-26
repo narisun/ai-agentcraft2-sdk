@@ -478,5 +478,10 @@ async def verify_registration(
             problems.append(f"the input schema of {name} does not match its pin")
     if problems:
         raise IntegrityError(
-            f"MCP server {entry.id!r} does not match the tool registry: " + "; ".join(problems)
+            f"MCP server {entry.id!r} does not match the tool registry: " + "; ".join(problems),
+            fix=(
+                f"if you changed the server's tools on purpose, run 'agentcraft2 registry pin "
+                f"{entry.id}': it adds the new tools, drops the old ones and pins every schema; "
+                "if you did not, undo the change in the server"
+            ),
         )

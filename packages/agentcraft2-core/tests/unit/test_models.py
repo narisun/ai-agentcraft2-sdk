@@ -160,8 +160,14 @@ def test_a_missing_optional_dependency_names_the_install_command(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setitem(sys.modules, "langchain_anthropic", None)
-    with pytest.raises(ConfigurationError, match=r"pip install 'agentcraft2-core\[anthropic\]'"):
+    with pytest.raises(
+        ConfigurationError, match=r"pip install 'agentcraft2-core\[anthropic\]'"
+    ) as caught:
         AnthropicChatModelProvider(SecretStr("sk-test-key"))
+    # A workspace is not fixed by pip alone: it says to put the extra in the service's pyproject.
+    assert caught.value.fix is not None
+    assert "pyproject.toml" in caught.value.fix
+    assert "agentcraft2 install" in caught.value.fix
 
 
 # --------------------------------------------------------------------- wiring

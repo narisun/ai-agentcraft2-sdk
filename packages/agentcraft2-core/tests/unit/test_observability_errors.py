@@ -9,7 +9,13 @@ from io import StringIO
 import pytest
 
 from agentcraft2_core.contracts import ConfigurationError, PolicyDenied, ValidationFailed
-from agentcraft2_core.observability import configure_logging, error_fields, explain, report_error
+from agentcraft2_core.observability import (
+    configure_logging,
+    error_fields,
+    explain,
+    report_error,
+    stack_trace,
+)
 
 
 def _raise_from_my_code() -> None:
@@ -139,12 +145,67 @@ def test_the_log_formatter_writes_the_detail_when_asked() -> None:
     assert line["error_detail"] == "category was 'refund'"
 
 
+def test_a_logged_failure_carries_its_stack_where_details_are_on_and_not_elsewhere() -> None:
+    lines = {}
+    for details in (True, False):
+        stream = StringIO()
+        handler = configure_logging("svc", stream=stream, details=details)
+        try:
+            try:
+                raise ZeroDivisionError("division by zero")
+            except ZeroDivisionError:
+                logging.getLogger("agentcraft2_core.test").exception("the run failed")
+        finally:
+            logging.getLogger().removeHandler(handler)
+        lines[details] = json.loads(stream.getvalue().splitlines()[-1])
+    shown, kept = lines[True], lines[False]
+    assert shown["error_traceback"].rstrip().endswith("ZeroDivisionError: division by zero")
+    assert shown["error"] == "division by zero"
+    assert "error_traceback" not in kept
+    assert "division by zero" not in json.dumps(kept)
+
+
 def test_report_error_explains_a_library_error_and_returns_the_exit_code() -> None:
     stream = StringIO()
-    assert report_error("helper", _caught(), stream=stream) == 1
+    assert report_error("helper", _caught(), trace=False, stream=stream) == 1
     text = stream.getvalue()
     assert text.startswith("helper: ConfigurationError: the audit option 'fsync'")
     assert "Traceback" not in text
+
+
+def test_report_error_gives_the_exact_message_and_stack_of_a_library_error_by_default() -> None:
+    stream = StringIO()
+    report_error("helper", _caught(), stream=stream)
+    text = stream.getvalue()
+    assert text.startswith("Traceback (most recent call last):")
+    assert "ConfigurationError: the audit option 'fsync'" in text.split("helper:", 1)[0]
+    assert "\nhelper: ConfigurationError: the audit option 'fsync'" in text
+
+
+def test_a_log_line_carries_the_whole_stack_only_where_details_are_on() -> None:
+    def buggy() -> None:
+        raise ZeroDivisionError("division by zero")
+
+    with pytest.raises(ZeroDivisionError) as caught:
+        buggy()
+    shown = error_fields(caught.value, details=True)
+    kept = error_fields(caught.value)
+    assert "in buggy" in shown["error_traceback"]
+    assert shown["error_traceback"].rstrip().endswith("ZeroDivisionError: division by zero")
+    assert "error_traceback" not in kept
+    assert "division by zero" not in str(kept)
+
+
+def test_the_stack_is_cut_from_the_front_when_it_is_very_long() -> None:
+    def long_message() -> None:
+        raise ValueError("x" * 30_000 + " the end")
+
+    with pytest.raises(ValueError, match="the end") as caught:
+        long_message()
+    text = stack_trace(caught.value)
+    assert text.startswith("...")
+    assert text.rstrip().endswith("the end")
+    assert len(text) < 12_100
 
 
 def test_report_error_shows_the_traceback_of_a_bug_on_a_developers_machine() -> None:

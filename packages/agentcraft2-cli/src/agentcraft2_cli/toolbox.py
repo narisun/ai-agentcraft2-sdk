@@ -29,6 +29,7 @@ from agentcraft2_cli.processes import (
 from agentcraft2_cli.read_redshift import CatalogReader, fetch_catalog
 from agentcraft2_cli.render import TemplateRenderer
 from agentcraft2_cli.scaffold import Scaffolder
+from agentcraft2_cli.services.manager import ServiceTools
 
 __all__ = ["Prompt", "Toolbox", "terminal_prompt"]
 
@@ -51,7 +52,13 @@ def terminal_prompt(question: str, default: str) -> str | None:
     """Ask at the terminal, if the command is running at one."""
     if not sys.stdin.isatty():
         return None
-    return str(click.prompt(question, default=default))
+    try:
+        return str(click.prompt(question, default=default))
+    except click.Abort as stopped:
+        # Nobody to answer (the input ended): the default stands. Ctrl+C still stops.
+        if isinstance(stopped.__context__, EOFError):
+            return None
+        raise
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,6 +76,7 @@ class Toolbox:
         opa_server: Starts a local OPA.
         prompt: Asks a person a question.
         is_installed: Says whether a package can be imported by this Python.
+        services: What starts, stops and installs the services Phoenix and Agent Lab.
     """
 
     renderer: TemplateRenderer = field(default_factory=TemplateRenderer)
@@ -81,6 +89,7 @@ class Toolbox:
     opa_server: OpaStarter = opa_server
     prompt: Prompt = terminal_prompt
     is_installed: Callable[[str], bool] = is_importable
+    services: ServiceTools = field(default_factory=ServiceTools)
 
     def scaffolder(self) -> Scaffolder:
         """Return what creates workspaces and adds services, built from these tools."""
