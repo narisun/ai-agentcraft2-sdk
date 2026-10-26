@@ -88,8 +88,8 @@ where needed. Tools accept neither raw SQL nor arbitrary table names.
 
 ## Design and checks
 
-For local debugging, inspect `rmprep-data.log` in the run folder printed by
-`start-local.bat`. Each admitted named query writes a `data_query` entry with its
+For local debugging, inspect the console output of the terminal that runs the
+MCP service. Each admitted named query writes a `data_query` entry with its
 name, duration, row/column counts, truncation and masked columns. Local logging
 also includes bounded, credential-masked parameters such as UEN, dates and offset.
 It does not copy returned records into console lines. Open the MCP span in

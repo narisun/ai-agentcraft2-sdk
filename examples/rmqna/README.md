@@ -79,9 +79,9 @@ lookup) and *How many open service tickets does Vermont have?* (two clients matc
 The model writes the SQL as the argument of its `execute_sql` call, so the call's trace span is where
 a wrong answer is traced to a wrong statement. No code is needed, only settings.
 
-1. Start Phoenix on your machine with the library's launcher (`start-phoenix.bat` on Windows,
-   `./start-phoenix.sh` elsewhere: `setup` once, then `start`; see `docs/phoenix-trial.md` at the
-   library root). It serves `http://127.0.0.1:6006`.
+1. Have a Phoenix server running on your machine at `http://127.0.0.1:6006`. `ac2 services` is
+   planned to start it; until then no command in the library starts it (see `docs/phoenix-trial.md`
+   at the library root for what it shows).
 2. In `agents/rmqna/.env`, turn tracing on **and** content capture on, then restart the agent:
 
    ```dotenv

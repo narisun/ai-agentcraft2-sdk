@@ -4,28 +4,18 @@ Phoenix gives Agent Lab a timeline of each agent response: model messages, MCP
 calls, token usage, duration, and links back to checkpoint IDs. It is the only
 agent-tracing backend the library ships, and it stays off until you enable it.
 
-Phoenix runs on your own machine, started by this repository's launchers, with
-traces in one SQLite file. It needs no account and no key, and nothing leaves the
-machine: [traces stay on your machine](#traces-stay-on-your-machine). Steps 1 to 4
-below set it up.
+Phoenix runs on your own machine, with traces in one SQLite file. It needs no account
+and no key, and nothing leaves the machine: [traces stay on your machine](#traces-stay-on-your-machine).
 
-For the complete first-run path, use [local startup and testing](local-startup.md).
-This page explains Phoenix settings, trace inspection, privacy, and captured
-verification results.
+**Starting Phoenix.** The `start-phoenix` and `start-local` launchers that used to start
+it have been removed. `ac2 services` is planned to install, start and stop Phoenix with
+Agent Lab; until it is released, no command in this repository starts a Phoenix server. This
+page explains what to turn on in the agent, the settings, trace inspection, privacy, and the
+captured verification results.
 
+For the first-run path with Agent Lab, use [local startup and testing](local-startup.md).
 Commands are shown for Command Prompt. On macOS/Linux, open a bash or zsh terminal
-at the repository root and use the right-hand spelling. Paths use Windows
-separators; use `/` on macOS/Linux. [Local startup](local-startup.md) explains the
-convention and its Python requirement.
-
-| Command Prompt | macOS/Linux |
-| --- | --- |
-| `python …` | `python3 …` |
-| `start-phoenix.bat setup` | `./start-phoenix.sh setup` |
-| `start-phoenix.bat` | `./start-phoenix.sh` |
-| `start-local.bat` | `./start-local.sh` |
-| `stop-local.bat` | `./stop-local.sh` |
-| `type .agentcraft2\ui-rmprep\access-code` | `cat .agentcraft2/ui-rmprep/access-code` |
+at the repository root, use `python3` for `python`, and use `/` for `\`.
 
 ## Generated services: one setting
 
@@ -41,7 +31,7 @@ AC2_PHOENIX_ENABLED=true
 
 That is the whole integration. With nothing else set, the agent exports to
 `http://127.0.0.1:6006` under a project named for the service, so a Phoenix server
-must be listening there: start the local one (steps 1 to 4 below). **Content capture
+must be listening there (see [Starting Phoenix](#1-start-phoenix)). **Content capture
 stays off**: traces carry metadata, token counts, and checkpoint IDs, not
 conversation text. Set `PHOENIX_PROJECT_NAME` to group several agents' traces, and
 `AC2_PHOENIX_CAPTURE_CONTENT=true` only with approved test data (see [Privacy and
@@ -54,33 +44,28 @@ A generated agent's own `agents/<name>/docs/tracing.md` gives the same quick
 start with its name filled in. A service that composes by hand follows
 [Compose tracing by hand](#compose-tracing-by-hand) instead.
 
-The rest of this page sets up the local server (steps 1 to 4), lists every
+The rest of this page covers the local server (steps 1 to 4), lists every
 setting, and covers where traces go, privacy, hand composition, and
 troubleshooting.
 
-## 1. Install the Phoenix packages
+## 1. Start Phoenix
 
-Use Python 3.11 or newer and the pip index and certificates supplied by your team.
-Your package administrators must make the pinned package and compatible wheels for
-your platform available through the enterprise package repository. Open a terminal
-in the `ai-agentcraft2-sdk` repository and run:
+Phoenix is the `arize-phoenix==20.21.1` package. Your package administrators must make it
+and compatible wheels for your platform available through the enterprise package
+repository. `ac2 services` is planned to install it with the SDK and to start and stop it.
+Until that is released, this repository has no command that starts it.
 
-```bat
-start-phoenix.bat setup
-```
+A Phoenix server that listens on `http://127.0.0.1:6006` (or `localhost`, or `[::1]`, with
+an optional port) receives spans at `http://127.0.0.1:6006/v1/traces`. The agent accepts only
+an address on this machine. It is a trace viewer for your own machine: keep its HTTP
+listener on loopback, and turn off its Playground, its own MCP endpoint, code execution and
+built-in assistant, since Agent Lab and the agent's registered MCP servers cover those.
 
-The script installs `arize-phoenix==20.21.1` with pip into the package folder
-`.agentcraft2\phoenix\.venv`, using your existing Python. Agent Lab and the agent
-keep their own `.venv` packages. All three run with the default Python
-executable, without using environment-local Python or pip binaries. You only
-need to repeat setup after changing the pinned Phoenix version, changing the
-selected Python version, or rebuilding its packages. The script preserves your
-pip configuration.
+## 2. Enable Phoenix in the agent's .env
 
-## 2. Enable Phoenix in the root .env
-
-Add these settings to **`.env` beside the launchers**. Keep your existing model
-provider and API key in that file.
+Add these settings to the agent's own `.env` (for rmprep,
+`examples\rmprep\agents\rmprep\.env`). Keep your existing model provider and API key
+in that file.
 
 ```dotenv
 AC2_TELEMETRY=off
@@ -102,70 +87,13 @@ arguments/results, so use approved test data; its default is `false`. The agent'
 existing JSONL traces, audit records, and checkpoint database continue to work
 independently of Phoenix.
 
-## 3. Start the stack
+## 3. Start the agent and Agent Lab
 
-From a terminal in the repository root:
-
-```bat
-start-local.bat
-```
-
-The launcher reads the root `.env`, starts Phoenix, and waits for its health check
-before starting the MCP server, rmprep, and Agent Lab. Phoenix uses
-the same Python as the agent and UI, with its own package folder.
-Startup checks that the packages match the selected Python; it does not install packages. If it is
-missing, run `start-phoenix.bat setup`, then try again.
-
-Open Agent Lab at <http://127.0.0.1:8765> and Phoenix at
-<http://127.0.0.1:6006>. This local, single-user Phoenix setup needs no separate
-login. Check the printed model and settings before testing. Read the Agent Lab
-access code with `type .agentcraft2\ui-rmprep\access-code` in another terminal.
-
-Keep the launcher window open. Run `stop-local.bat` in a second terminal
-to stop the UI, agent, MCP server, and Phoenix, in that order. It also stops a
-standalone `start-phoenix.bat` run from this checkout. **Ctrl+C** in the original
-window also works. SQLite stores traces in
-`.agentcraft2\phoenix\data\phoenix.db`; restarting keeps them. The `.agentcraft2` folder
-is excluded from Git. Phoenix's startup log appears alongside the other service
-logs in `.agentcraft2\local-runs\<run-id>\phoenix.log`.
-Service log files use UTF-8, including first-run database messages on Windows.
-
-`start-local.bat services` also includes Phoenix when enabled. UI-only and scripted
-demo runs keep their existing scope. Variables set in the terminal override the root
-file; `--env-file` selects a different file instead of the root `.env`.
-The launcher uses the same effective Phoenix settings as the agent.
-
-Automatic startup applies to `http://127.0.0.1:6006` and
-`http://localhost:6006`. Another local port is yours to run: the launcher prints
-that choice and connects the agent without starting a Phoenix server.
-For a readiness check that stops everything afterward, run:
-
-```bat
-start-local.bat --smoke-test
-```
-
-The launcher configures Phoenix as a local trace viewer. Your agent calls the
-model and MCP tools; Phoenix displays their inputs, outputs, metrics, and
-checkpoint references. It binds HTTP to loopback and receives spans at
-`http://127.0.0.1:6006/v1/traces`.
-
-These server settings are applied automatically; keep your agent's provider and
-API key in the root `.env`:
-
-| Phoenix server feature | Local setting | Reason |
-| --- | --- | --- |
-| Playground model generation | `PHOENIX_ALLOWED_PROVIDERS=NONE` | Run model requests through Agent Lab; traces from every model provider remain visible. |
-| Phoenix's own MCP endpoint | `PHOENIX_ENABLE_MCP_SERVER=false` | Agents use their registered MCP servers. The trace viewer does not need another MCP endpoint. |
-| Code execution | `PHOENIX_ALLOWED_SANDBOX_PROVIDERS=NONE`, `PHOENIX_ENABLE_MCP_CODE_MODE=false` | Viewing traces requires no sandbox binaries. |
-| Built-in assistant | `PHOENIX_DISABLE_AGENT_ASSISTANT=true` | Test your agent through Agent Lab. |
-
-The launcher also disables usage telemetry and the optional gRPC collector.
-The native Phoenix banner may still list gRPC; this local setup uses HTTP only.
-`tools/phoenix_server.py` contains version-checked compatibility shims for the
-gRPC listener and the optional Bedrock Playground dependency check. The latter
-only checks for `aioboto3` when Phoenix allows its AWS provider. Neither shim
-changes installed packages, database queries, or warning filters. Review them
-when upgrading Phoenix.
+With a Phoenix server running, start the MCP server, the agent and Agent Lab as the
+[local startup guide](local-startup.md#3-start-the-services-and-open-agent-lab) shows. Restart
+the agent after changing a setting. Open Agent Lab at <http://127.0.0.1:8765> and Phoenix at
+<http://127.0.0.1:6006>. This local, single-user Phoenix setup needs no separate login.
+SQLite keeps the traces in the Phoenix server's data folder, so restarting keeps them.
 
 ## 4. Verify a conversation
 
@@ -203,14 +131,15 @@ database; Phoenix receives references, not a second copy of the checkpoint store
 <summary>Captured runs: October 15 and 16, 2026</summary>
 
 These are dated records of real runs through Agent Lab, kept so you can compare
-your own numbers. Model output, caching, and timing vary between runs.
+your own numbers. Model output, caching, and timing vary between runs. They were made with
+the `start-local` and `stop-local` launchers, which have since been removed.
 
 ### Verified local run: October 16, 2026
 
 The three questions above ran through Agent Lab using the root `.env`, default
 Python 3.13.0, Anthropic `claude-sonnet-4-5`, Phoenix 20.22.0 and SQLAlchemy 2.1.4.
 Startup masked credentials, and every observed Python process used the default
-installation. No `.venv` Python or pip executable ran.
+installation.
 
 | Turn | Model calls | MCP calls | Input / output tokens | UI response time | Checkpoint references |
 | --- | --- | --- | --- | --- | --- |
@@ -227,7 +156,7 @@ resolved to saved checkpoints.
 
 Phoenix trace browsing showed model input/output and usage. The service logs
 contained no SQLAlchemy warning or application error through startup, requests,
-browsing and shutdown. `stop-local.bat` stopped all four services gracefully;
+browsing and shutdown. All four services stopped gracefully;
 ports 6006, 8000, 8100 and 8765 closed. The root `.env` and existing saved
 conversations, traces and checkpoints were preserved. These are observed results;
 model wording, token counts and timings can vary.
@@ -302,7 +231,7 @@ fixed charge coverage 0.96, cash conversion cycle 87 → 106 days, and recorded
 wallet share 40.21%, preserving the unknown waiver execution and wallet-share
 methodology. Phoenix input/output and usage matched Agent Lab and the model JSONL.
 Source checks covered eight CSV records, 91 fields and seven calculated comparisons.
-Both memo versions remained saved; `stop-local.bat` stopped all four services
+Both memo versions remained saved; all four services stopped
 without changing stored conversation, checkpoint or trace rows during shutdown.
 
 The earlier follow-up needed two calls because Markdown markers pushed the raw
@@ -319,13 +248,13 @@ to run this scenario with your own saved memo reference.
 From your agent workspace, run `python -m agentcraft2_cli config explain rmprep`
 to see effective Phoenix settings and where each came from. Run `python -m
 agentcraft2_cli doctor rmprep` to validate them before startup. These tracing checks
-do not contact Phoenix. Startup, `doctor`, `config explain`, and the launcher's
-summary all resolve the settings through the same function,
+do not contact Phoenix. Startup, `doctor` and `config explain`
+all resolve the settings through the same function,
 `resolve_phoenix_settings`, so a check shows what startup will use.
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
-| `AC2_PHOENIX_ENABLED` | Enable tracing; `start-local.bat` also starts the local server | `false` |
+| `AC2_PHOENIX_ENABLED` | Enable tracing; a Phoenix server must be listening at the endpoint | `false` |
 | `AC2_PHOENIX_CAPTURE_CONTENT` | Include model and tool input/output | `false` |
 | `PHOENIX_COLLECTOR_ENDPOINT` | `http` origin on this machine (`localhost`, `127.0.0.1` or `[::1]`), without `/v1/traces`; set it only to use another local port | `http://127.0.0.1:6006` |
 | `PHOENIX_PROJECT_NAME` | Project for this agent's spans: 1 to 128 letters, digits, `_` or `-` | The service's name |
@@ -472,9 +401,8 @@ agents keep their own model dependencies and can still send traces to Phoenix.
 | Symptom | Check |
 | --- | --- |
 | Package installation fails | Ask your package administrators for `arize-phoenix==20.21.1` and compatible wheels for your Python version and platform. |
-| Phoenix environment is missing | Run `start-phoenix.bat setup` once, then retry `start-local.bat`. |
-| Port 6006 is in use | Stop a standalone Phoenix window before starting the combined stack. The launcher fails before starting services and leaves the existing process alone. |
-| Repeated connection errors on port 4318 | Set `AC2_TELEMETRY=off` for this local setup, or configure your separate operational collector. Restart the stack. |
+| Port 6006 is in use | Another Phoenix server (or program) already listens there. Stop it, or use it, or run yours on another local port and set `PHOENIX_COLLECTOR_ENDPOINT`. |
+| Repeated connection errors on port 4318 | Set `AC2_TELEMETRY=off` for this local setup, or configure your separate operational collector. Restart the agent. |
 | Startup says tracing needs `agentcraft2-core[otel]` | Install the extra with pip, as shown in [Compose tracing by hand](#compose-tracing-by-hand), then restart. |
 | Startup rejects `PHOENIX_COLLECTOR_ENDPOINT` | Use `http://localhost`, `http://127.0.0.1` or `http://[::1]` with an optional port, and no path, query, or credentials. Traces are never sent to another host. |
 | A note says `PHOENIX_API_KEY` is no longer used, or `AC2_PHOENIX_ENV_FILE` is no longer read | Delete the line. The local Phoenix needs no key, and settings come from the process environment and the service `.env`. |
@@ -487,11 +415,8 @@ agents keep their own model dependencies and can still send traces to Phoenix.
 
 ### Browse saved traces without starting the agent
 
-Run `start-phoenix.bat` by itself to browse the SQLite traces. Press **Ctrl+C** in
-that window before starting the combined stack. A supervised Phoenix process is
-part of the stack: if it exits unexpectedly, the launcher stops its remaining
-services and points you to the log. An externally managed endpoint has its own
-lifecycle.
+Start the Phoenix server by itself to browse the SQLite traces. An externally managed endpoint
+has its own lifecycle.
 
 References: [Phoenix CLI](https://arize.com/docs/phoenix/self-hosting/deployment-options),
 [SQLite storage](https://arize.com/docs/phoenix/self-hosting/deployment),

@@ -29,10 +29,8 @@ MCP calls and checkpoint references grouped by thread.
 ## 1. Install with Python and pip
 
 For browser testing, follow the [local startup and testing guide](../../docs/local-startup.md).
-It covers `setup-local.bat`, Anthropic/Phoenix settings in the root `.env`, login,
-a Jones memo, same-thread follow-ups and client switching. For each later session,
-run `start-local.bat` from the library root in **Command Prompt**, then
-`stop-local.bat` when finished. Saved state is preserved.
+It covers the model settings, login, a Jones memo, same-thread follow-ups and client
+switching. Stop each service with Ctrl+C when finished. Saved state is preserved.
 
 In Agent Lab, select **Choose agent → Start chat with rmprep**. **Memos** opens
 saved versions beside chat. **Open trace in Agent Lab** opens the response's
@@ -41,8 +39,7 @@ inspection. To ask about an older memo, name its reference in your question;
 selecting it in the panel changes only the viewer.
 
 The remaining steps cover manual setup and command-line walkthroughs. Manual
-agent commands read `agents/rmprep/.env`; they do not automatically load the
-root `.env` used by the launcher.
+agent commands read `agents/rmprep/.env`.
 
 This folder is a complete `agentcraft2` workspace. Copy it anywhere, or download
 its zip from the repository's Examples workflow, and open **Command Prompt** in the
@@ -57,9 +54,9 @@ ac2 install
 
 Use the same approved Python for installation and service startup. The `install`
 command installs both example services and the development tools using the active
-Python interpreter and pip. In a checkout of the SDK repository, install its packages
-first with `python -m pip install -e packages\agentcraft2-core -e packages\agentcraft2-aws
--e packages\agentcraft2-cli`, then run `ac2 install --workspace examples\rmprep`.
+Python interpreter and pip. It never installs the SDK, so in a checkout of the SDK
+repository install that first with `python tools\install_sdk.py --editable`, then run
+`ac2 install --workspace examples\rmprep`.
 
 Create local settings once:
 
@@ -314,10 +311,7 @@ references, comparisons, long histories, tool argument drift and older checkpoin
 
 ## Local Phoenix tracing
 
-The [Phoenix trial](../../docs/phoenix-trial.md) uses the same Python, a separate package folder, and SQLite.
-Run `start-phoenix.bat setup` once from the library repository root, then follow
-the guide to enable Phoenix in the root `.env`. `start-local.bat` starts the local
-Phoenix server before rmprep and Agent Lab, using the package folder `.agentcraft2\phoenix\.venv`.
-`stop-local.bat` in another Command Prompt stops the stack and preserves
-conversations, traces, and checkpoints. **Ctrl+C** in the original launcher also works.
-Each response links to its Phoenix trace; the existing turn inspector remains available.
+The [Phoenix trial](../../docs/phoenix-trial.md) describes the traces. `ac2 services` is planned
+to install, start and stop Phoenix; until it is released, no command in the library starts it.
+With a Phoenix server on this machine and tracing enabled in `agents/rmprep/.env`, each
+response links to its Phoenix trace; the existing turn inspector remains available.

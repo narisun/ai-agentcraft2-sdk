@@ -14,10 +14,10 @@ terminal and `python3` in place of `python`:
 python -m pip install -e packages/agentcraft2-aws
 ```
 
-For the rmprep/Agent Lab stack, `setup-local.bat --model bedrock` installs the
-Bedrock dependencies, including `langchain-aws`. Set `AC2_MODEL_PROVIDER=bedrock`
-and your model ID in the root `.env` before starting. All services use the same
-Python; the launcher isolates UI/Phoenix packages. See [local setup](../../docs/local-startup.md).
+For the rmprep/Agent Lab stack, install the Bedrock dependencies, including
+`langchain-aws`, with `python -m pip install -e "packages/agentcraft2-aws[bedrock]"`. Set
+`AC2_MODEL_PROVIDER=bedrock` and your model ID in the rmprep service's `.env` before
+starting. See [local setup](../../docs/local-startup.md).
 
 For a manual Bedrock installation, use `-e "packages/agentcraft2-aws[bedrock]"` instead; for PostgreSQL
 use `-e "packages/agentcraft2-aws[postgres]"`; for checkpoints in AgentCore Memory

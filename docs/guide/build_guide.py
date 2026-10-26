@@ -260,7 +260,7 @@ def configuration_variables() -> str:
 def _phoenix_variable_rows() -> list[list[str]]:
     settings = (
         (
-            "Enable Phoenix tracing; start-local.bat also starts the local server.",
+            "Enable Phoenix tracing; a Phoenix server must be listening at the endpoint.",
             "false; true to trace locally",
             "false: a deployed service refuses to start with tracing on",
         ),

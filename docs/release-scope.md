@@ -45,10 +45,9 @@ These changes landed afterward; each is documented where it is used and covered 
 | `AgentService` and `run_agent` composition | One composition root wires configuration, tracing, lifecycle, readiness and serving around an agent's graph. Generated agents, accounts-agent and rmprep start through it. `app_extras` adds app options that need the live container. | Core `test_http_composition.py`. |
 | Agent Lab import contracts | import-linter contracts keep the UI's contracts free of every other module in its package, keep its application layer free of frameworks and adapters, and let only its integrations module import the browser framework. | `lint-imports` over the contracts in the UI package's `pyproject.toml`. |
 | Coverage gate | CI requires 90% branch coverage on core's `contracts`, `config`, `di` and `pipeline` packages. | `.github/workflows/ci.yml`. |
-| POSIX launchers | `setup-local.sh`, `start-local.sh`, `stop-local.sh` and `start-phoenix.sh` run the same tools as their `.bat` twins on macOS and Linux. | `tests/architecture/test_local_launchers.py`. |
 | `agentcraft2 update --plan` | A true dry run: it previews every change an update would make and writes nothing. | CLI `test_cli_diagnostics.py`. |
 | Phoenix is the only agent-tracing backend | Langfuse support is removed: its integration, settings, guides and trace-link provider. `agent_tracing` is the single composition name, and `run_agent` wires it. [ADR 0004](adr/0004-tracing-configuration.md) records the decision. | Core `test_phoenix.py` and `test_http_composition.py`; CLI `test_phoenix_agents.py`; `tests/architecture/test_config_containment.py`. |
-| Library variables are spelled `AC2_*` | `AC2_` replaces `EAP_` as the prefix of every library-owned variable, including the secrets family (`AC2_SECRET_<NAME>`), the Phoenix settings and Agent Lab's reads. The generated reference, templates, examples and guides use it. The old spellings keep working for one minor release and warn; see the migration note below. | Core `test_config_legacy_prefix.py`, `test_phoenix.py` and `test_http_composition.py`; CLI `test_cli_deploy.py`; UI `test_agent_environment_prefix.py`; `tests/architecture/test_config_containment.py` and `test_local_dev.py`. |
+| Library variables are spelled `AC2_*` | `AC2_` replaces `EAP_` as the prefix of every library-owned variable, including the secrets family (`AC2_SECRET_<NAME>`), the Phoenix settings and Agent Lab's reads. The generated reference, templates, examples and guides use it. The old spellings keep working for one minor release and warn; see the migration note below. | Core `test_config_legacy_prefix.py`, `test_phoenix.py` and `test_http_composition.py`; CLI `test_cli_deploy.py`; UI `test_agent_environment_prefix.py`; `tests/architecture/test_config_containment.py`. |
 
 **Migrating to the `AC2_` prefix.**
 
@@ -62,7 +61,7 @@ These changes landed afterward; each is documented where it is used and covered 
   doctor` (as a passing `warning` check) and `agentcraft2 config explain` print the
   same line, Phoenix settings included. This covers every spelling the
   library reads: the bound variables, the `SECRET_<NAME>` family, the Phoenix
-  settings, Agent Lab's settings and the local launchers.
+  settings and Agent Lab's settings.
 - A value set in both spellings is safe only when the values are equal: equal
   values coexist silently. Different values fail startup with a message that
   names both spellings, because guessing which one you meant is the hazard. The
