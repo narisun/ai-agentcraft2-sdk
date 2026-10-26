@@ -165,7 +165,8 @@ def test_a_missing_variable_or_template_is_an_error_not_empty_text() -> None:
 
 def test_the_templates_in_the_package_are_found() -> None:
     files = TemplateRenderer().render(
-        "workspace", {"name": "demo", "owner": "team", "library": ANSWERS.library}
+        "workspace",
+        {"name": "demo", "owner": "team", "library": ANSWERS.library, "var": variable_names()},
     )
     assert PurePosixPath(".gitignore") in files
     assert (

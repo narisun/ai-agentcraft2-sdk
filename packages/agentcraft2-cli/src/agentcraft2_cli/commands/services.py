@@ -12,8 +12,8 @@ from agentcraft2_cli.errors import CliError
 from agentcraft2_cli.services.manager import ServiceStatus, start, status, stop
 from agentcraft2_cli.services.registry import SERVICES, ServiceSpec
 from agentcraft2_cli.toolbox import Toolbox
-from agentcraft2_cli.workspace import LibrarySource, load_answers
-from agentcraft2_core.config import state_dir
+from agentcraft2_core.config import sdk_path, state_dir
+from agentcraft2_core.contracts import ConfigurationError
 
 __all__ = ["services"]
 
@@ -32,14 +32,17 @@ def _selected(names: Sequence[str]) -> list[ServiceSpec]:
     return [spec for name, spec in SERVICES.items() if not names or name in names]
 
 
-def _where(ctx: click.Context, workspace: Path | None) -> tuple[Path, Path, LibrarySource]:
-    """Return the workspace root, its state folder and where it takes the SDK from."""
+def _where(ctx: click.Context, workspace: Path | None) -> tuple[Path, Path, Path]:
+    """Return the workspace root, its state folder, and the SDK's folder."""
     root = workspace_root(workspace or ctx.meta.get(_META))
-    return root, state_dir(root), load_answers(root).library
+    try:
+        return root, state_dir(root), sdk_path()
+    except ConfigurationError as problem:
+        raise CliError.from_error(problem) from None
 
 
 def _row(current: ServiceStatus) -> str:
-    lines = [f"  {current.name:<9}{current.state:<14}{current.address}".rstrip()]
+    lines = [f"  {current.name:<9}{current.state:<18}{current.address}".rstrip()]
     lines.append(f"            {current.title}")
     if current.detail:
         lines.append(f"            {current.detail}")
@@ -47,20 +50,18 @@ def _row(current: ServiceStatus) -> str:
 
 
 def _list(ctx: click.Context, tools: Toolbox, workspace: Path | None) -> None:
-    root, state, library = _where(ctx, workspace)
-    source = (
-        f"the checkout at {Path(library.path or '')}"
-        if library.kind == "path"
-        else "the package index"
-    )
+    root, state, sdk = _where(ctx, workspace)
     click.echo(f"Services for {root}")
-    click.echo(f"  state: {state}")
-    click.echo(f"  installed from: {source}")
+    click.echo(f"  installed with the SDK in: {sdk}")
+    click.echo(f"  data, logs and run state in: {state}")
     click.echo("")
-    shown = [status(spec, state, tools.services) for spec in SERVICES.values()]
+    shown = [status(spec, state, sdk, tools.services) for spec in SERVICES.values()]
     for current in shown:
         click.echo(_row(current))
-    if any(current.state in {"stopped", "not installed", "failed"} for current in shown):
+    if any(current.state == "not installed" for current in shown):
+        click.echo("")
+        click.echo("Install the SDK's tools with: python tools/install_sdk.py (ac2 never does)")
+    elif any(current.state == "stopped" for current in shown):
         click.echo("")
         click.echo("Start them with: ac2 services start")
 
@@ -73,10 +74,12 @@ def _list(ctx: click.Context, tools: Toolbox, workspace: Path | None) -> None:
 @pass_toolbox
 @click.pass_context
 def services(ctx: click.Context, tools: Toolbox, workspace: Path | None) -> None:
-    """Check, start and stop the services the SDK provides for developing agents.
+    """List, start and stop the services the SDK provides for developing agents.
 
-    A service runs on your machine only, in the background, and keeps its packages, data and
-    log in this workspace's .agentcraft2 folder (under the project home, when you set one),
+    The SDK installs them once, with itself, in its own folder, apart from your agents and
+    their packages. 'ac2' only starts and stops them, and shows what they need. A service
+    runs on your machine only, in the background, and writes its data, logs and run state
+    to this workspace's .agentcraft2 folder (under the project home, when you set one),
     which Git ignores. 'ac2 services' lists each one with its state and address.
 
     \b
@@ -86,13 +89,12 @@ def services(ctx: click.Context, tools: Toolbox, workspace: Path | None) -> None
     \b
     Examples:
       ac2 services                   what is installed and running
-      ac2 services start             install what is missing, then start every service
+      ac2 services start             start every service and wait until it answers
       ac2 services start phoenix     start one
       ac2 services stop              stop every service
       ac2 logs phoenix               read the log of a service
 
-    The first start installs the packages of a service with this Python and its pip, so it
-    needs your package index. Nothing is installed anywhere else.
+    A service that is not installed is installed by the SDK's own installer, not by 'ac2'.
     """
     ctx.meta[_META] = workspace
     if ctx.invoked_subcommand is None:
@@ -108,7 +110,7 @@ def list_services(ctx: click.Context, tools: Toolbox, workspace: Path | None) ->
     _list(ctx, tools, workspace)
 
 
-@services.command("start", short_help="Install if needed, start, and wait until ready.")
+@services.command("start", short_help="Start services and wait until they answer.")
 @click.argument("names", nargs=-1)
 @workspace_option
 @pass_toolbox
@@ -118,8 +120,8 @@ def start_services(
 ) -> None:
     """Start the named services, or all of them, and wait until each answers.
 
-    Each service is checked first: its port must be free, and, if its packages are missing,
-    they are installed into the workspace's .agentcraft2 folder. Starting a service that is
+    Each service is checked first: it must be installed with this version of the SDK, its
+    folders must be on a local disk, and its port must be free. Starting a service that is
     already running does nothing.
 
     \b
@@ -127,9 +129,9 @@ def start_services(
       ac2 services start             every service
       ac2 services start phoenix     one
     """
-    _, state, library = _where(ctx, workspace)
+    _, state, sdk = _where(ctx, workspace)
     for spec in _selected(names):
-        start(spec, state, library, tools.services)
+        start(spec, state, sdk, tools.services)
 
 
 @services.command("stop", short_help="Stop services and wait until they have stopped.")
@@ -143,13 +145,14 @@ def stop_services(
     """Stop the named services, or all of them, and wait until each has stopped.
 
     A service is asked to stop the way Ctrl+C asks, so it can finish what it is doing. If it
-    has not stopped after 30 seconds it is ended. What it saved, such as traces, is kept.
+    has not stopped after 30 seconds it is ended. What it saved, such as traces, is kept. A
+    service started from another workspace is stopped too: there is one of it.
 
     \b
     Examples:
       ac2 services stop              every service
       ac2 services stop phoenix      one
     """
-    _, state, _ = _where(ctx, workspace)
+    _, state, sdk = _where(ctx, workspace)
     for spec in reversed(_selected(names)):
-        stop(spec, state, tools.services)
+        stop(spec, state, sdk, tools.services)

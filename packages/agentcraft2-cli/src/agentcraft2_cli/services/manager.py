@@ -1,8 +1,10 @@
-"""Starting, stopping and reporting on a service, in the state folder of a workspace.
+"""Starting, stopping and reporting on a service installed with the SDK.
 
-Every step checks before it acts and stops at the first problem with a message that says what
-was expected, what was found and what to do. Nothing here prints a traceback for a mistake of
-the person at the keyboard; those are :class:`~agentcraft2_cli.errors.CliError`.
+A service is installed once, with the SDK, in the SDK's own folder; this module only runs it.
+What it writes, and its run state, go to the workspace's state folder. Every step checks before
+it acts and stops at the first problem with a message that says what was expected, what was
+found and what to do. A mistake of the person at the keyboard is a
+:class:`~agentcraft2_cli.errors.CliError`, never a traceback.
 """
 
 from __future__ import annotations
@@ -15,22 +17,20 @@ import time
 import warnings
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 import click
 
+from agentcraft2_cli import __version__
 from agentcraft2_cli.errors import CliError
 from agentcraft2_cli.logbook import tail_lines
-from agentcraft2_cli.services import packages
-from agentcraft2_cli.services.control import (
-    SPEC,
-    active,
-    read_status,
-    request_stop,
-)
+from agentcraft2_cli.services.control import SPEC, active, read_status, request_stop
+from agentcraft2_cli.services.installed import installed_problem
 from agentcraft2_cli.services.probe import is_ready, port_free
 from agentcraft2_cli.services.registry import Paths, ServiceSpec, paths_of
-from agentcraft2_cli.workspace import LibrarySource
+from agentcraft2_core.config import sdk_variable
+from agentcraft2_core.config.local_disk import local_disk_problem
 
 __all__ = ["ServiceStatus", "ServiceTools", "launch_supervisor", "start", "status", "stop"]
 
@@ -38,6 +38,8 @@ STARTUP_SECONDS = 90
 """How long a service has to answer its health path once it is started."""
 STOP_SECONDS = 30
 """How long a service has to stop when asked, before the supervisor forces it."""
+RUNNING_FOLDER = "running"
+"""The folder in the SDK's folder that says which workspace a service was started from."""
 
 
 def launch_supervisor(run: Path) -> None:
@@ -67,14 +69,12 @@ class ServiceTools:
     """What the manager uses to reach outside the process; a test passes its own."""
 
     launch: Callable[[Path], None] = launch_supervisor
-    pip: packages.PipRunner = packages.run_pip
     port_free: Callable[[int], bool] = port_free
     is_ready: Callable[[int, str], bool] = is_ready
     sleep: Callable[[float], None] = time.sleep
     clock: Callable[[], float] = time.monotonic
-    check_paths: Callable[[ServiceSpec, Paths], None] = lambda spec, paths: check_path_length(
-        spec, paths
-    )
+    disk_problem: Callable[[Path], str | None] = local_disk_problem
+    version: str = __version__
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,8 +84,8 @@ class ServiceStatus:
     Attributes:
         name: The service's name.
         title: What it is.
-        state: ``not installed``, ``stopped``, ``starting``, ``running``, ``stopping`` or
-            ``failed``.
+        state: ``not installed``, ``stopped``, ``starting``, ``running``, ``running elsewhere``
+            (started from another workspace), ``stopping`` or ``failed``.
         address: Where it listens, when it is up.
         detail: What else matters: a problem, or how it ended.
     """
@@ -97,10 +97,26 @@ class ServiceStatus:
     detail: str = ""
 
 
-def status(spec: ServiceSpec, state: Path, tools: ServiceTools | None = None) -> ServiceStatus:
+def _pointer(sdk: Path, name: str) -> Path:
+    return sdk / RUNNING_FOLDER / f"{name}.json"
+
+
+def _started_from(sdk: Path, name: str) -> Path | None:
+    """Return the state folder of the workspace that started the service, if it is running."""
+    try:
+        recorded = json.loads(_pointer(sdk, name).read_text("utf-8"))
+        other = Path(str(recorded["state"]))
+    except (OSError, ValueError, KeyError):
+        return None
+    return other if active(paths_of(other, sdk, name).run) else None
+
+
+def status(
+    spec: ServiceSpec, state: Path, sdk: Path, tools: ServiceTools | None = None
+) -> ServiceStatus:
     """Report what is true of a service: installed, running, healthy, or how it ended."""
     tools = tools or ServiceTools()
-    paths = paths_of(state, spec.name)
+    paths = paths_of(state, sdk, spec.name)
     published = read_status(paths.run)
     alive = active(paths.run)
     recorded = str(published.get("state", ""))
@@ -127,48 +143,19 @@ def status(spec: ServiceSpec, state: Path, tools: ServiceTools | None = None) ->
             "failed",
             detail=f"{published.get('detail', 'it failed')}; read {paths.log}",
         )
-    if spec.requirements is not None:
-        why = packages.problem(paths.base)
-        if why is not None:
-            installed = packages.site_packages(paths.base).exists()
-            return ServiceStatus(
-                spec.name,
-                spec.title,
-                "not installed",
-                detail=why if installed else "'ac2 services start' installs it",
-            )
-    return ServiceStatus(spec.name, spec.title, "stopped")
-
-
-WINDOWS_PATH_LIMIT = 259
-"""The longest path Windows opens, unless an administrator has enabled long paths."""
-
-
-def check_path_length(
-    spec: ServiceSpec, paths: Paths, *, windows: bool = sys.platform == "win32"
-) -> None:
-    """Refuse to install packages whose paths Windows would not open.
-
-    Raises:
-        CliError: If the folder is so deep that the longest file of the service would pass the
-            limit, with the length found and what to do.
-    """
-    if not windows or spec.requirements is None:
-        return
-    needed = len(str(packages.site_packages(paths.base))) + 1 + spec.longest_path
-    if needed > WINDOWS_PATH_LIMIT:
-        raise CliError(
-            f"the path to the packages of {spec.name} is too long for Windows",
-            expected=f"paths of at most {WINDOWS_PATH_LIMIT} characters",
-            actual=(
-                f"{needed} characters for the longest file below "
-                f"{packages.site_packages(paths.base)}"
-            ),
-            fix=(
-                "use a workspace in a shorter folder, such as C:\\work\\my-workspace; or ask "
-                "your administrators to turn on long paths (the LongPathsEnabled setting)"
-            ),
+    why = installed_problem(spec, paths.installed, tools.version)
+    if why is not None:
+        return ServiceStatus(spec.name, spec.title, "not installed", detail=why)
+    elsewhere = _started_from(sdk, spec.name)
+    if elsewhere is not None and elsewhere != state:
+        return ServiceStatus(
+            spec.name,
+            spec.title,
+            "running elsewhere",
+            spec.url,
+            f"started from {elsewhere.parent}; 'ac2 services stop {spec.name}' ends it",
         )
+    return ServiceStatus(spec.name, spec.title, "stopped")
 
 
 def _log_tail(log: Path, lines: int = 12) -> str:
@@ -176,21 +163,34 @@ def _log_tail(log: Path, lines: int = 12) -> str:
     return "\n".join(f"    {line}" for line in shown) if shown else "    (the log is empty)"
 
 
+def _not_installed(spec: ServiceSpec, sdk: Path, why: str) -> CliError:
+    return CliError(
+        f"{spec.name} is not installed",
+        expected=f"{spec.name} installed with the SDK, in {sdk}",
+        actual=why,
+        fix=(
+            "install the SDK with its tools: python tools/install_sdk.py, in your checkout of "
+            "the SDK; or, from a package index: python -m agentcraft2_cli.sdk install "
+            "--version SPECIFIER. 'ac2' starts and stops the tools and never installs them"
+        ),
+    )
+
+
 def start(
     spec: ServiceSpec,
     state: Path,
-    library: LibrarySource,
+    sdk: Path,
     tools: ServiceTools | None = None,
     say: Callable[[str], None] = click.echo,
 ) -> None:
-    """Install the service if needed, start it detached, and wait until it answers.
+    """Start a service installed with the SDK, in the background, and wait until it answers.
 
     Raises:
         CliError: At the first problem, with what to do about it.
     """
     tools = tools or ServiceTools()
-    paths = paths_of(state, spec.name)
-    current = status(spec, state, tools)
+    paths = paths_of(state, sdk, spec.name)
+    current = status(spec, state, sdk, tools)
     if current.state in {"starting", "running"}:
         say(f"{spec.name} is already {current.state}: {spec.url}")
         return
@@ -199,6 +199,30 @@ def start(
             f"{spec.name} is still stopping",
             fix=f"wait a moment, then run 'ac2 services start {spec.name}' again",
         )
+    if current.state == "running elsewhere":
+        raise CliError(
+            f"{spec.name} is already running, for another workspace",
+            expected=f"{spec.name} free to start here: it is one program on port {spec.port}",
+            actual=current.detail,
+            fix=f"run 'ac2 services stop {spec.name}' to end it, then start it here",
+        )
+    why = installed_problem(spec, paths.installed, tools.version)
+    if why is not None:
+        raise _not_installed(spec, sdk, why)
+    for folder in (paths.installed, paths.data):
+        reason = tools.disk_problem(folder)
+        if reason is not None:
+            raise CliError(
+                f"{spec.name} must run from and write to a local disk",
+                expected="a folder on a disk of this machine: not a network drive, not synced, "
+                "not roamed with the profile",
+                actual=reason,
+                fix=(
+                    "move the workspace to a local folder"
+                    if folder == paths.data
+                    else f"set {sdk_variable()} to a local folder and install the SDK again"
+                ),
+            )
     if not tools.port_free(spec.port):
         raise CliError(
             f"port {spec.port} is already in use, so {spec.name} cannot listen on it",
@@ -209,11 +233,6 @@ def start(
                 f"then run 'ac2 services start {spec.name}' again"
             ),
         )
-    if spec.requirements is not None and packages.problem(paths.base) is not None:
-        tools.check_paths(spec, paths)
-        say(f"Installing the packages of {spec.name} into {packages.site_packages(paths.base)}")
-        packages.install(paths.base, spec.requirements(library), pip=tools.pip)
-        say("  installed")
     paths.data.mkdir(parents=True, exist_ok=True)
     shutil.rmtree(paths.run, ignore_errors=True)
     paths.run.mkdir(parents=True)
@@ -235,6 +254,12 @@ def start(
     say(f"Starting {spec.name}; log: {paths.log}")
     tools.launch(paths.run)
     _wait_until_up(spec, paths, tools)
+    pointer = _pointer(sdk, spec.name)
+    pointer.parent.mkdir(parents=True, exist_ok=True)
+    pointer.write_text(
+        json.dumps({"state": str(state), "time": datetime.now(UTC).isoformat(timespec="seconds")}),
+        encoding="utf-8",
+    )
     say(f"{spec.name} is ready: {spec.url}")
 
 
@@ -270,19 +295,28 @@ def _wait_until_up(spec: ServiceSpec, paths: Paths, tools: ServiceTools) -> None
 def stop(
     spec: ServiceSpec,
     state: Path,
+    sdk: Path,
     tools: ServiceTools | None = None,
     say: Callable[[str], None] = click.echo,
 ) -> None:
     """Ask a running service to stop, and wait until it has.
 
+    A service started from another workspace is stopped from here too: there is one of it,
+    and a person who asks for it to stop wants it stopped.
+
     Raises:
         CliError: If it did not stop, or ended badly.
     """
     tools = tools or ServiceTools()
-    paths = paths_of(state, spec.name)
-    if not active(paths.run):
-        say(f"{spec.name} is not running")
-        return
+    owner = state
+    if not active(paths_of(state, sdk, spec.name).run):
+        elsewhere = _started_from(sdk, spec.name)
+        if elsewhere is None:
+            say(f"{spec.name} is not running")
+            return
+        owner = elsewhere
+        say(f"{spec.name} was started from {owner.parent}")
+    paths = paths_of(owner, sdk, spec.name)
     request_stop(paths.run)
     say(f"Stopping {spec.name}...")
     start_time = tools.clock()
@@ -294,6 +328,7 @@ def stop(
                 fix=f"read {paths.log}; close the program that holds port {spec.port}",
             )
         tools.sleep(0.2)
+    _pointer(sdk, spec.name).unlink(missing_ok=True)
     published = read_status(paths.run)
     if published.get("state") != "stopped":
         raise CliError(

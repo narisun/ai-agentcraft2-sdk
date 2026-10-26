@@ -18,7 +18,8 @@ has `--help` with examples.
 | --- | --- |
 | `ac2 new agent <name>` | Add an agent with its tests (`--mcp <server>` to let it call a server's tools). |
 | `ac2 new mcp <name>` | Add an MCP server over sample data, or your own with `--from-csv`. |
-| `ac2 install` | Install every service and its dependencies. |
+| `ac2 install` | Install this workspace's agents and MCP servers and the development tools. |
+| `ac2 services` | List Phoenix, the viewer for traces, and start and stop it. |
 | `ac2 doctor` | Verify the configuration of everything; each failure says what to fix. |
 | `ac2 run <service>` | Start a service. A failure to start shows the exact message and stack trace. |
 | `ac2 logs [service]` | Read what a service wrote while it ran. |
@@ -60,14 +61,16 @@ PYTHON=python3
 ```
 
 If this checkout moved, update its path in `agentcraft2.toml` and the variable
-above. Install the CLI once using the selected Python:
+above. Install the SDK once from that checkout, using the selected Python. Its installer
+builds and installs the SDK and puts its tools, such as Phoenix for traces, in the SDK's own
+folder (`{{ var.sdk_path }}`), apart from this workspace:
 
 ```bat
-"%PYTHON%" -m pip install -e "%LIBRARY%/packages/agentcraft2-core" -e "%LIBRARY%/packages/agentcraft2-cli"
+"%PYTHON%" "%LIBRARY%/tools/install_sdk.py"
 ```
 
 ```bash
-"$PYTHON" -m pip install -e "$LIBRARY/packages/agentcraft2-core" -e "$LIBRARY/packages/agentcraft2-cli"
+"$PYTHON" "$LIBRARY/tools/install_sdk.py"
 ```
 {% else %}
 Select your approved Python and install the CLI once. Configure pip
@@ -101,8 +104,9 @@ that prefix with `"$PYTHON"` to use the selected Python.
 "%PYTHON%" -m agentcraft2_cli check
 ```
 
-`install` uses this Python's pip to install the services and development tools.
-Run it again after adding a service or changing dependencies. `check` runs lint,
+`install` uses this Python's pip to install this workspace's own agents and MCP servers
+and the development tools. It never installs the SDK or its tools; the SDK's installer does
+that. Run it again after adding a service or changing dependencies. `check` runs lint,
 formatting, type checks, tests, and policy samples. To run only the tests:
 
 ```bat

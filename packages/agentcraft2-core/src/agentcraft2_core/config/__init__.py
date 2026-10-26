@@ -22,8 +22,11 @@ from agentcraft2_core.config.bindings import (
 from agentcraft2_core.config.deprecations import log_deprecation, log_resolution_warnings
 from agentcraft2_core.config.home import (
     STATE_FOLDER,
+    default_sdk_path,
     home_variable,
     project_home,
+    sdk_path,
+    sdk_variable,
     state_dir,
 )
 from agentcraft2_core.config.profiles import PROFILE_DEFAULTS, ProfileDefaults
@@ -71,6 +74,7 @@ __all__ = [
     "Resolution",
     "SettingsFileSource",
     "ValueKind",
+    "default_sdk_path",
     "load_service_config",
     "log_deprecation",
     "log_resolution_warnings",
@@ -80,6 +84,8 @@ __all__ = [
     "render_env_example",
     "render_env_file",
     "render_reference",
+    "sdk_path",
+    "sdk_variable",
     "secret_key",
     "service_resolver",
     "settings_files",
@@ -138,6 +144,12 @@ def service_resolver(dotenv_path: Path | None = DEFAULT_DOTENV) -> ConfigResolve
                 f"{home_variable()} is set in {file}, and it locates that file",
                 expected="the variable in the process environment",
                 fix=f"remove it from {file} and set it in the shell that starts the service",
+            )
+        if sdk_variable() in set(source.names()):
+            raise ConfigurationError(
+                f"{sdk_variable()} is set in {file}, and it is a setting of the machine",
+                expected="the variable in the process environment, where the SDK was installed",
+                fix=f"remove it from {file}; set it in the shell that installs and starts the SDK",
             )
         layers.append(source)
     # The developer's settings file is the weakest layer: beside the service, then in the home.

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import socket
 import subprocess
 import sys
@@ -26,18 +27,24 @@ from agentcraft2_cli.services.control import (
 )
 from agentcraft2_cli.services.manager import (
     ServiceTools,
-    check_path_length,
     launch_supervisor,
     start,
     status,
     stop,
 )
-from agentcraft2_cli.services.registry import PHOENIX, ServiceSpec, paths_of
+from agentcraft2_cli.services.registry import (
+    INSTALLED,
+    PHOENIX,
+    ServiceSpec,
+    installed_dir,
+    paths_of,
+)
 from agentcraft2_cli.testing import toolbox_for_tests
 from agentcraft2_cli.workspace import LibrarySource
 
 CHECKOUT = LibrarySource(kind="path", path="/work/sdk")
 INDEX = LibrarySource(kind="index", version=">=0.1,<0.2")
+VERSION = "1.0"
 
 
 def say_to(lines: list[str]) -> Callable[[str], None]:
@@ -186,22 +193,25 @@ def test_phoenix_installs_from_the_checkout_or_from_the_index() -> None:
     assert PHOENIX.requirements(INDEX) == ["agentcraft2-phoenix[viewer]>=0.1,<0.2"]
 
 
-def test_phoenix_runs_its_module_on_its_port_with_its_data_folder(tmp_path: Path) -> None:
-    paths = paths_of(tmp_path, "phoenix")
+def test_phoenix_runs_from_the_sdk_and_writes_to_the_workspace(tmp_path: Path) -> None:
+    paths = paths_of(tmp_path / "state", tmp_path / "sdk", "phoenix")
     command = PHOENIX.command(paths)
+    assert command[8] == str(packages.site_packages(tmp_path / "sdk" / "services" / "phoenix"))
     assert command[-5:] == ["agentcraft2_phoenix", "--port", "6006", "--data-dir", str(paths.data)]
     assert PHOENIX.url == "http://127.0.0.1:6006"
     assert PHOENIX.health_path == "/healthz"
 
 
-def test_a_service_keeps_everything_in_the_state_folder_and_its_log_beside_the_agents(
+def test_the_code_is_in_the_sdk_folder_and_what_a_service_writes_is_in_the_workspace(
     tmp_path: Path,
 ) -> None:
-    paths = paths_of(tmp_path, "phoenix")
-    assert paths.base == tmp_path / "services" / "phoenix"
+    state, sdk = tmp_path / "ws" / ".agentcraft2", tmp_path / "sdk"
+    paths = paths_of(state, sdk, "phoenix")
+    assert paths.installed == sdk / "services" / "phoenix"
+    assert paths.base == state / "services" / "phoenix"
     assert paths.run == paths.base / "run"
     assert paths.data == paths.base / "data"
-    assert paths.log == tmp_path / "logs" / "phoenix.log"
+    assert paths.log == state / "logs" / "phoenix.log"
 
 
 # ----------------------------------------------------------------------- the run folder
@@ -232,144 +242,177 @@ def test_a_stop_is_a_file_in_the_run_folder(tmp_path: Path) -> None:
     assert stop_requested(tmp_path)
 
 
-# ------------------------------------------------------------------------------ status
+# ------------------------------------------------------------------- a workspace and an SDK
+
+
+@pytest.fixture
+def state(tmp_path: Path) -> Path:
+    return tmp_path / "ws" / ".agentcraft2"
+
+
+@pytest.fixture
+def sdk(tmp_path: Path) -> Path:
+    return tmp_path / "sdk"
 
 
 def fake_tools(**changes: object) -> ServiceTools:
     defaults: dict[str, object] = {
         "launch": lambda run: None,
-        "pip": lambda arguments, folder: 0,
         "port_free": lambda port: True,
         "is_ready": lambda port, path: True,
         "sleep": lambda seconds: None,
-        # The folders of a test run are deeper than a workspace; the check has tests of its own.
-        "check_paths": lambda spec, paths: None,
+        "disk_problem": lambda folder: None,
+        "version": VERSION,
     }
     return ServiceTools(**{**defaults, **changes})  # type: ignore[arg-type]
 
 
-def installed(state: Path) -> None:
-    """Make the packages of Phoenix look installed."""
-    folder = packages.site_packages(paths_of(state, "phoenix").base)
-    folder.mkdir(parents=True)
-    (folder / bootstrap.MANIFEST).write_text(
-        __import__("json").dumps(bootstrap.runtime_identity()), encoding="utf-8"
+def installed(sdk: Path, *, version: str = VERSION) -> Path:
+    """Make Phoenix look installed with the SDK."""
+    folder = installed_dir(sdk, "phoenix")
+    packages_folder = packages.site_packages(folder)
+    packages_folder.mkdir(parents=True)
+    (packages_folder / bootstrap.MANIFEST).write_text(
+        json.dumps(bootstrap.runtime_identity()), encoding="utf-8"
     )
+    (folder / INSTALLED).write_text(json.dumps({"sdk_version": version}), encoding="utf-8")
+    return folder
 
 
-def test_a_service_that_was_never_installed_says_how_to_install_it(tmp_path: Path) -> None:
-    current = status(PHOENIX, tmp_path, fake_tools())
+# ------------------------------------------------------------------------------ status
+
+
+def test_a_service_that_the_sdk_did_not_install_says_who_installs_it(
+    state: Path, sdk: Path
+) -> None:
+    current = status(PHOENIX, state, sdk, fake_tools())
     assert current.state == "not installed"
-    assert "ac2 services start" in current.detail
+    assert "do not exist" in current.detail or "does not exist" in current.detail
 
 
-def test_installed_packages_that_are_for_another_python_are_not_installed(tmp_path: Path) -> None:
-    installed(tmp_path)
-    manifest = packages.site_packages(paths_of(tmp_path, "phoenix").base) / bootstrap.MANIFEST
-    manifest.write_text('{"implementation": "other"}', encoding="utf-8")
-    current = status(PHOENIX, tmp_path, fake_tools())
+def test_packages_for_another_python_are_not_usable(state: Path, sdk: Path) -> None:
+    folder = installed(sdk)
+    (packages.site_packages(folder) / bootstrap.MANIFEST).write_text(
+        '{"implementation": "other"}', encoding="utf-8"
+    )
+    current = status(PHOENIX, state, sdk, fake_tools())
     assert current.state == "not installed"
     assert "different Python" in current.detail
 
 
-def test_installed_and_not_running_is_stopped(tmp_path: Path) -> None:
-    installed(tmp_path)
-    assert status(PHOENIX, tmp_path, fake_tools()).state == "stopped"
+def test_a_service_installed_by_another_version_of_the_sdk_is_not_usable(
+    state: Path, sdk: Path
+) -> None:
+    installed(sdk, version="0.0.9")
+    current = status(PHOENIX, state, sdk, fake_tools())
+    assert current.state == "not installed"
+    assert f"installed by SDK 0.0.9, and this is SDK {VERSION}" in current.detail
 
 
-def test_a_running_supervisor_with_an_answering_service_is_running(tmp_path: Path) -> None:
-    installed(tmp_path)
-    run = paths_of(tmp_path, "phoenix").run
+def test_installed_and_not_running_is_stopped(state: Path, sdk: Path) -> None:
+    installed(sdk)
+    assert status(PHOENIX, state, sdk, fake_tools()).state == "stopped"
+
+
+def test_a_running_supervisor_with_an_answering_service_is_running(state: Path, sdk: Path) -> None:
+    installed(sdk)
+    run = paths_of(state, sdk, "phoenix").run
     run.mkdir(parents=True)
     write_status(run, "running", port=6006)
     with hold_lock(run):
-        current = status(PHOENIX, tmp_path, fake_tools())
+        current = status(PHOENIX, state, sdk, fake_tools())
     assert (current.state, current.address) == ("running", "http://127.0.0.1:6006")
 
 
-def test_a_running_service_that_no_longer_answers_is_failed(tmp_path: Path) -> None:
-    installed(tmp_path)
-    run = paths_of(tmp_path, "phoenix").run
+def test_a_running_service_that_no_longer_answers_is_failed(state: Path, sdk: Path) -> None:
+    installed(sdk)
+    run = paths_of(state, sdk, "phoenix").run
     run.mkdir(parents=True)
     write_status(run, "running", port=6006)
     with hold_lock(run):
-        current = status(PHOENIX, tmp_path, fake_tools(is_ready=lambda port, path: False))
+        current = status(PHOENIX, state, sdk, fake_tools(is_ready=lambda port, path: False))
     assert current.state == "failed"
     assert "nothing answers on port 6006" in current.detail
 
 
 def test_a_supervisor_that_died_without_saying_how_is_failed_and_points_at_the_log(
-    tmp_path: Path,
+    state: Path, sdk: Path
 ) -> None:
-    installed(tmp_path)
-    run = paths_of(tmp_path, "phoenix").run
-    run.mkdir(parents=True)
-    write_status(run, "running", port=6006)
-    current = status(PHOENIX, tmp_path, fake_tools())
+    installed(sdk)
+    paths = paths_of(state, sdk, "phoenix")
+    paths.run.mkdir(parents=True)
+    write_status(paths.run, "running", port=6006)
+    current = status(PHOENIX, state, sdk, fake_tools())
     assert current.state == "failed"
-    assert str(paths_of(tmp_path, "phoenix").log) in current.detail
+    assert str(paths.log) in current.detail
 
 
-def test_a_recorded_failure_is_shown_with_its_reason(tmp_path: Path) -> None:
-    installed(tmp_path)
-    run = paths_of(tmp_path, "phoenix").run
+def test_a_recorded_failure_is_shown_with_its_reason(state: Path, sdk: Path) -> None:
+    installed(sdk)
+    run = paths_of(state, sdk, "phoenix").run
     run.mkdir(parents=True)
     write_status(run, "failed", detail="the service ended with exit code 1 before it was ready")
-    current = status(PHOENIX, tmp_path, fake_tools())
+    current = status(PHOENIX, state, sdk, fake_tools())
     assert current.state == "failed"
     assert "exit code 1 before it was ready" in current.detail
+
+
+def test_a_service_started_from_another_workspace_shows_where(tmp_path: Path, sdk: Path) -> None:
+    installed(sdk)
+    other = tmp_path / "other" / ".agentcraft2"
+    mine = tmp_path / "mine" / ".agentcraft2"
+    run = paths_of(other, sdk, "phoenix").run
+    run.mkdir(parents=True)
+    write_status(run, "running", port=6006)
+    pointer = sdk / "running" / "phoenix.json"
+    pointer.parent.mkdir(parents=True)
+    pointer.write_text(json.dumps({"state": str(other)}), encoding="utf-8")
+    with hold_lock(run):
+        current = status(PHOENIX, mine, sdk, fake_tools())
+        assert current.state == "running elsewhere"
+        assert str(other.parent) in current.detail
+        assert status(PHOENIX, other, sdk, fake_tools()).state == "running"
+    assert status(PHOENIX, mine, sdk, fake_tools()).state == "stopped"
 
 
 # ------------------------------------------------------------------------------- start
 
 
-def writes_running(state: Path) -> Callable[[Path], None]:
+def writes_running(run_of: Callable[[], Path]) -> Callable[[Path], None]:
     def launch(run: Path) -> None:
         write_status(run, "running", port=6006)
 
     return launch
 
 
-def test_starting_installs_what_is_missing_then_starts_and_waits(tmp_path: Path) -> None:
+def test_starting_does_not_install_and_says_who_does(state: Path, sdk: Path) -> None:
+    def launch(run: Path) -> None:
+        raise AssertionError("nothing may start when the service is not installed")
+
+    with pytest.raises(CliError, match="phoenix is not installed") as caught:
+        start(PHOENIX, state, sdk, fake_tools(launch=launch))
+    assert "python tools/install_sdk.py" in (caught.value.fix or "")
+    assert "never installs" in (caught.value.fix or "")
+    assert str(sdk) in (caught.value.expected or "")
+
+
+def test_starting_what_the_sdk_installed_starts_it_and_waits(state: Path, sdk: Path) -> None:
+    installed(sdk)
     lines: list[str] = []
-    asked: list[Sequence[str]] = []
-
-    def pip(arguments: Sequence[str], folder: Path) -> int:
-        asked.append(arguments)
-        target = Path(arguments[arguments.index("--target") + 1])
-        target.mkdir(parents=True)
-        return 0
-
-    tools = fake_tools(pip=pip, launch=writes_running(tmp_path))
-    start(PHOENIX, tmp_path, CHECKOUT, tools, say_to(lines))
-    assert asked[0][-2] == "--editable"
-    assert any(line.startswith("Installing the packages of phoenix") for line in lines)
+    start(PHOENIX, state, sdk, fake_tools(launch=writes_running(lambda: state)), say_to(lines))
+    assert lines[0].startswith("Starting phoenix; log: ")
     assert lines[-1] == "phoenix is ready: http://127.0.0.1:6006"
-    spec = (paths_of(tmp_path, "phoenix").run / "spec.json").read_text(encoding="utf-8")
-    assert '"port": 6006' in spec
-    assert paths_of(tmp_path, "phoenix").data.is_dir()
+    spec = json.loads((paths_of(state, sdk, "phoenix").run / "spec.json").read_text("utf-8"))
+    assert spec["port"] == 6006
+    assert spec["cwd"] == str(paths_of(state, sdk, "phoenix").base)
+    assert paths_of(state, sdk, "phoenix").data.is_dir()
+    recorded = json.loads((sdk / "running" / "phoenix.json").read_text("utf-8"))
+    assert recorded["state"] == str(state)
 
 
-def test_starting_what_is_installed_does_not_install_again(tmp_path: Path) -> None:
-    installed(tmp_path)
-    lines: list[str] = []
-
-    def pip(arguments: Sequence[str], folder: Path) -> int:
-        raise AssertionError("pip must not run")
-
-    start(
-        PHOENIX,
-        tmp_path,
-        CHECKOUT,
-        fake_tools(pip=pip, launch=writes_running(tmp_path)),
-        say_to(lines),
-    )
-    assert not any("Installing" in line for line in lines)
-
-
-def test_starting_a_service_that_is_running_does_nothing(tmp_path: Path) -> None:
-    installed(tmp_path)
-    run = paths_of(tmp_path, "phoenix").run
+def test_starting_a_service_that_is_running_does_nothing(state: Path, sdk: Path) -> None:
+    installed(sdk)
+    run = paths_of(state, sdk, "phoenix").run
     run.mkdir(parents=True)
     write_status(run, "running", port=6006)
     lines: list[str] = []
@@ -378,58 +421,81 @@ def test_starting_a_service_that_is_running_does_nothing(tmp_path: Path) -> None
         raise AssertionError("must not start a second one")
 
     with hold_lock(run):
-        start(PHOENIX, tmp_path, CHECKOUT, fake_tools(launch=launch), say_to(lines))
+        start(PHOENIX, state, sdk, fake_tools(launch=launch), say_to(lines))
     assert lines == ["phoenix is already running: http://127.0.0.1:6006"]
 
 
-def test_a_port_that_is_in_use_stops_the_start_before_anything_is_installed(
-    tmp_path: Path,
+def test_a_service_running_for_another_workspace_is_not_started_again(
+    tmp_path: Path, sdk: Path
 ) -> None:
-    def pip(arguments: Sequence[str], folder: Path) -> int:
-        raise AssertionError("nothing is installed when the port is taken")
+    installed(sdk)
+    other = tmp_path / "other" / ".agentcraft2"
+    run = paths_of(other, sdk, "phoenix").run
+    run.mkdir(parents=True)
+    write_status(run, "running", port=6006)
+    (sdk / "running").mkdir()
+    (sdk / "running" / "phoenix.json").write_text(json.dumps({"state": str(other)}), "utf-8")
+    with hold_lock(run), pytest.raises(CliError, match="running, for another workspace") as caught:
+        start(PHOENIX, tmp_path / "mine" / ".agentcraft2", sdk, fake_tools())
+    assert str(other.parent) in (caught.value.actual or "")
+    assert "ac2 services stop phoenix" in (caught.value.fix or "")
 
+
+@pytest.mark.parametrize("which", ["sdk", "data"])
+def test_a_folder_that_is_not_on_a_local_disk_stops_the_start(
+    state: Path, sdk: Path, which: str
+) -> None:
+    installed(sdk)
+    folder = sdk if which == "sdk" else paths_of(state, sdk, "phoenix").data
+
+    def problem(path: Path) -> str | None:
+        return "it is on a network drive (H:)" if path.is_relative_to(folder) else None
+
+    with pytest.raises(CliError, match="must run from and write to a local disk") as caught:
+        start(PHOENIX, state, sdk, fake_tools(disk_problem=problem))
+    assert caught.value.actual == "it is on a network drive (H:)"
+    assert ("move the workspace" if which == "data" else "AC2_SDK_PATH") in (caught.value.fix or "")
+
+
+def test_a_port_that_is_in_use_stops_the_start(state: Path, sdk: Path) -> None:
+    installed(sdk)
     with pytest.raises(CliError, match="port 6006 is already in use") as caught:
-        start(PHOENIX, tmp_path, CHECKOUT, fake_tools(port_free=lambda port: False, pip=pip))
+        start(PHOENIX, state, sdk, fake_tools(port_free=lambda port: False))
     assert caught.value.expected == "port 6006 free on 127.0.0.1"
     assert "ac2 services start phoenix" in (caught.value.fix or "")
+    assert not (paths_of(state, sdk, "phoenix").run / "spec.json").exists()
 
 
-def test_a_failed_install_stops_the_start_with_pips_exit_code(tmp_path: Path) -> None:
-    with pytest.raises(CliError, match="exit code 1"):
-        start(PHOENIX, tmp_path, CHECKOUT, fake_tools(pip=lambda arguments, folder: 1))
-    assert not (paths_of(tmp_path, "phoenix").run / "spec.json").exists()
-
-
-def test_a_service_that_fails_on_start_shows_why_and_the_end_of_its_log(tmp_path: Path) -> None:
-    installed(tmp_path)
-    paths = paths_of(tmp_path, "phoenix")
+def test_a_service_that_fails_on_start_shows_why_and_the_end_of_its_log(
+    state: Path, sdk: Path
+) -> None:
+    installed(sdk)
+    paths = paths_of(state, sdk, "phoenix")
     paths.log.parent.mkdir(parents=True)
     paths.log.write_text("loading\nRuntimeError: arize-phoenix 99 is installed\n", encoding="utf-8")
 
     def launch(run: Path) -> None:
         write_status(run, "failed", detail="the service ended with exit code 1 before it was ready")
 
-    with pytest.raises(
-        CliError, match="phoenix did not start: the service ended with exit code 1"
-    ) as caught:
-        start(PHOENIX, tmp_path, CHECKOUT, fake_tools(launch=launch))
+    with pytest.raises(CliError, match="phoenix did not start: the service ended") as caught:
+        start(PHOENIX, state, sdk, fake_tools(launch=launch))
     assert "RuntimeError: arize-phoenix 99 is installed" in (caught.value.fix or "")
     assert str(paths.log) in (caught.value.fix or "")
 
 
-def test_a_supervisor_that_never_starts_is_reported(tmp_path: Path) -> None:
-    installed(tmp_path)
+def test_a_supervisor_that_never_starts_is_reported(state: Path, sdk: Path) -> None:
+    installed(sdk)
     ticks = iter(range(0, 1000, 5))
     with pytest.raises(CliError, match="supervisor of phoenix did not start"):
-        start(PHOENIX, tmp_path, CHECKOUT, fake_tools(clock=lambda: float(next(ticks))))
+        start(PHOENIX, state, sdk, fake_tools(clock=lambda: float(next(ticks))))
 
 
 # ------------------------------------------------------------------------------- stop
 
 
-def test_stopping_what_is_not_running_says_so(tmp_path: Path) -> None:
+def test_stopping_what_is_not_running_says_so(state: Path, sdk: Path) -> None:
     lines: list[str] = []
-    stop(PHOENIX, tmp_path, fake_tools(), say_to(lines))
+    stop(PHOENIX, state, sdk, fake_tools(), say_to(lines))
     assert lines == ["phoenix is not running"]
 
 
@@ -478,35 +544,57 @@ def stub_spec(port: int) -> ServiceSpec:
 
 
 @pytest.mark.slow
-def test_a_service_starts_in_the_background_answers_and_stops_gracefully(tmp_path: Path) -> None:
+def test_a_service_starts_in_the_background_answers_and_stops_gracefully(
+    state: Path, sdk: Path
+) -> None:
     port = free_port()
     spec = stub_spec(port)
     lines: list[str] = []
-    tools = ServiceTools(launch=launch_supervisor)
+    tools = ServiceTools(launch=launch_supervisor, disk_problem=lambda folder: None)
     try:
-        start(spec, tmp_path, CHECKOUT, tools, say_to(lines))
+        start(spec, state, sdk, tools, say_to(lines))
         assert lines[-1] == f"stub is ready: http://127.0.0.1:{port}"
-        current = status(spec, tmp_path, tools)
+        current = status(spec, state, sdk, tools)
         assert (current.state, current.address) == ("running", f"http://127.0.0.1:{port}")
         again: list[str] = []
-        start(spec, tmp_path, CHECKOUT, tools, say_to(again))
+        start(spec, state, sdk, tools, say_to(again))
         assert again == [f"stub is already running: http://127.0.0.1:{port}"]
-        with pytest.raises(CliError, match="already in use"):
-            start(stub_spec(port), tmp_path / "other", CHECKOUT, tools)
+        with pytest.raises(CliError, match="already running, for another workspace"):
+            start(stub_spec(port), state.parent / "other" / ".agentcraft2", sdk, tools)
         stopped: list[str] = []
-        stop(spec, tmp_path, tools, say_to(stopped))
+        stop(spec, state, sdk, tools, say_to(stopped))
         assert stopped == ["Stopping stub...", "stub stopped"]
-        assert status(spec, tmp_path, tools).state == "stopped"
-        assert read_status(paths_of(tmp_path, "stub").run)["state"] == "stopped"
-        log = paths_of(tmp_path, "stub").log.read_text(encoding="utf-8")
+        assert status(spec, state, sdk, tools).state == "stopped"
+        assert not (sdk / "running" / "stub.json").exists()
+        assert read_status(paths_of(state, sdk, "stub").run)["state"] == "stopped"
+        log = paths_of(state, sdk, "stub").log.read_text(encoding="utf-8")
         assert "stub listening" in log
         assert "stub stopping" in log
     finally:
-        _stop_quietly(spec, tmp_path)
+        _stop_quietly(spec, state, sdk)
 
 
 @pytest.mark.slow
-def test_a_service_that_dies_on_start_is_reported_with_its_output(tmp_path: Path) -> None:
+def test_a_service_started_from_another_workspace_is_stopped_from_here(
+    state: Path, sdk: Path
+) -> None:
+    spec = stub_spec(free_port())
+    tools = ServiceTools(launch=launch_supervisor, disk_problem=lambda folder: None)
+    elsewhere = state.parent.parent / "other" / ".agentcraft2"
+    try:
+        start(spec, elsewhere, sdk, tools, say_to([]))
+        assert status(spec, state, sdk, tools).state == "running elsewhere"
+        lines: list[str] = []
+        stop(spec, state, sdk, tools, say_to(lines))
+        assert lines[0] == f"stub was started from {elsewhere.parent}"
+        assert lines[-1] == "stub stopped"
+        assert status(spec, elsewhere, sdk, tools).state == "stopped"
+    finally:
+        _stop_quietly(spec, elsewhere, sdk)
+
+
+@pytest.mark.slow
+def test_a_service_that_dies_on_start_is_reported_with_its_output(state: Path, sdk: Path) -> None:
     spec = ServiceSpec(
         name="dies",
         title="A service that cannot start",
@@ -518,16 +606,17 @@ def test_a_service_that_dies_on_start_is_reported_with_its_output(tmp_path: Path
             "import sys; print('RuntimeError: no packages', file=sys.stderr); sys.exit(3)",
         ],
     )
+    tools = ServiceTools(launch=launch_supervisor, disk_problem=lambda folder: None)
     with pytest.raises(
         CliError, match="dies did not start: the service ended with exit code 3"
     ) as caught:
-        start(spec, tmp_path, CHECKOUT, ServiceTools(launch=launch_supervisor))
+        start(spec, state, sdk, tools)
     assert "RuntimeError: no packages" in (caught.value.fix or "")
-    assert status(spec, tmp_path, ServiceTools()).state == "failed"
+    assert status(spec, state, sdk, tools).state == "failed"
 
 
-def _stop_quietly(spec: ServiceSpec, state: Path) -> None:
-    paths = paths_of(state, spec.name)
+def _stop_quietly(spec: ServiceSpec, state: Path, sdk: Path) -> None:
+    paths = paths_of(state, sdk, spec.name)
     if active(paths.run):
         request_stop(paths.run)
         deadline = time.monotonic() + 30
@@ -544,17 +633,38 @@ def make_workspace(tmp_path: Path) -> Path:
     return tmp_path / "demo"
 
 
-def test_services_lists_each_service_with_its_state_and_how_to_start(
+@pytest.fixture(autouse=True)
+def an_sdk_folder(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("AC2_SDK_PATH", str(tmp_path / "sdk"))
+
+
+def test_services_lists_each_service_with_its_state_and_who_installs_it(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     root = make_workspace(tmp_path)
+    capsys.readouterr()
     tools = toolbox_for_tests(services=fake_tools())
     assert main(["services", "--workspace", str(root)], tools) == 0
     out = capsys.readouterr().out
     assert f"Services for {root}" in out
-    assert f"state: {root / '.agentcraft2'}" in out
+    assert f"installed with the SDK in: {tmp_path / 'sdk'}" in out
+    assert f"data, logs and run state in: {root / '.agentcraft2'}" in out
     assert "phoenix" in out
     assert "not installed" in out
+    assert "python tools/install_sdk.py (ac2 never does)" in out
+
+
+def test_services_say_how_to_start_when_something_is_stopped(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = make_workspace(tmp_path)
+    installed(tmp_path / "sdk")
+    capsys.readouterr()
+    assert (
+        main(["services", "--workspace", str(root)], toolbox_for_tests(services=fake_tools())) == 0
+    )
+    out = capsys.readouterr().out
+    assert "stopped" in out
     assert "Start them with: ac2 services start" in out
 
 
@@ -575,22 +685,44 @@ def test_services_start_and_stop_name_the_services_that_exist(
 ) -> None:
     root = make_workspace(tmp_path)
     tools = toolbox_for_tests(services=fake_tools())
+    capsys.readouterr()
     assert main(["services", "start", "nope", "--workspace", str(root)], tools) == 1
     err = capsys.readouterr().err
     assert "there is no service called 'nope'" in err
     assert "one of: phoenix" in err
 
 
-def test_services_start_installs_starts_and_reports(
+def test_services_start_starts_what_the_sdk_installed(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     root = make_workspace(tmp_path)
-    state = root / ".agentcraft2"
-    installed(state)
-
-    tools = toolbox_for_tests(services=fake_tools(launch=writes_running(state)))
+    installed(tmp_path / "sdk")
+    tools = toolbox_for_tests(services=fake_tools(launch=writes_running(lambda: root)))
+    capsys.readouterr()
     assert main(["services", "start", "--workspace", str(root)], tools) == 0
     assert "phoenix is ready: http://127.0.0.1:6006" in capsys.readouterr().out
+
+
+def test_services_start_without_the_sdks_tools_fails_with_the_fix(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = make_workspace(tmp_path)
+    capsys.readouterr()
+    tools = toolbox_for_tests(services=fake_tools())
+    assert main(["services", "start", "--workspace", str(root)], tools) == 1
+    err = capsys.readouterr().err
+    assert "phoenix is not installed" in err
+    assert "python tools/install_sdk.py" in err
+
+
+def test_a_relative_sdk_path_is_refused_with_the_fix(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = make_workspace(tmp_path)
+    monkeypatch.setenv("AC2_SDK_PATH", "relative/sdk")
+    capsys.readouterr()
+    assert main(["services", "--workspace", str(root)], toolbox_for_tests()) == 1
+    assert "AC2_SDK_PATH is not an absolute path" in capsys.readouterr().err
 
 
 def test_services_outside_a_workspace_say_so(
@@ -603,7 +735,12 @@ def test_services_outside_a_workspace_say_so(
 def test_the_help_teaches_the_commands(capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["services", "--help"], toolbox_for_tests()) == 0
     out = capsys.readouterr().out
-    for text in ("ac2 services start", "ac2 services stop", "ac2 logs phoenix", ".agentcraft2"):
+    for text in (
+        "ac2 services start",
+        "ac2 services stop",
+        "ac2 logs phoenix",
+        "installs them once",
+    ):
         assert text in out
 
 
@@ -611,7 +748,7 @@ def test_logs_reads_the_log_of_a_service(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     root = make_workspace(tmp_path)
-    log = paths_of(root / ".agentcraft2", "phoenix").log
+    log = paths_of(root / ".agentcraft2", tmp_path / "sdk", "phoenix").log
     log.parent.mkdir(parents=True)
     log.write_text("Phoenix on http://127.0.0.1:6006\nlistening\n", encoding="utf-8")
     capsys.readouterr()
@@ -629,28 +766,3 @@ def test_logs_of_a_service_that_never_ran_say_so(
     capsys.readouterr()
     assert main(["logs", "phoenix", "--workspace", str(root)], toolbox_for_tests()) == 1
     assert "there are no logs yet" in capsys.readouterr().err
-
-
-# ------------------------------------------------------------------- Windows path length
-
-
-def test_a_folder_so_deep_that_windows_would_not_open_the_files_is_refused_before_installing(
-    tmp_path: Path,
-) -> None:
-    deep = paths_of(tmp_path / ("d" * 60) / ("e" * 60) / ("f" * 60), "phoenix")
-    with pytest.raises(CliError, match="too long for Windows") as caught:
-        check_path_length(PHOENIX, deep, windows=True)
-    assert caught.value.expected == "paths of at most 259 characters"
-    assert "characters for the longest file below" in (caught.value.actual or "")
-    assert "shorter folder" in (caught.value.fix or "")
-    assert "LongPathsEnabled" in (caught.value.fix or "")
-
-
-def test_a_shallow_folder_and_other_systems_are_not_refused(tmp_path: Path) -> None:
-    check_path_length(PHOENIX, paths_of(Path("C:/work/demo/.agentcraft2"), "phoenix"), windows=True)
-    deep = paths_of(tmp_path / ("d" * 200), "phoenix")
-    check_path_length(PHOENIX, deep, windows=False)
-
-
-def test_the_longest_file_of_phoenix_was_measured_with_room_to_spare() -> None:
-    assert PHOENIX.longest_path >= 145

@@ -11,7 +11,7 @@ ac2 init my-workspace --owner my-team   # create a workspace
 cd my-workspace
 ac2 new mcp people                      # an MCP server over sample data
 ac2 new agent helper --mcp people       # an agent that may call it
-ac2 install                             # install every service, with its tests
+ac2 install                             # install this workspace's services, with its tests
 ac2 doctor                              # verify the configuration of everything
 ac2 run people                          # terminal 1: the server
 ac2 run helper                          # terminal 2: the agent
@@ -27,7 +27,7 @@ ac2 errors                              # list what failed, with the stack trace
 | `ac2 new agent NAME` | Add an agent: a LangGraph graph, a tool, an HTTP entry point and its tests. `--model fake`, `anthropic` or `bedrock`; `--mcp SERVER` to let it call a server. |
 | `ac2 new mcp NAME` | Add an MCP server over sample data, or over your own CSV files (`--from-csv`), an OpenAPI document (`--from-openapi`) or a Redshift schema (`--from-redshift`). |
 | `ac2 link AGENT SERVER` | Let an agent call the tools of a server: registry entry, policy rules and a test. |
-| `ac2 install` | Install every service and its dependencies with the Python you run this with. |
+| `ac2 install` | Install this workspace's agents and MCP servers and the development tools with the Python you run this with. It never installs the SDK, which has its own installer; it stops with the fix if the SDK is missing. |
 | `ac2 doctor [SERVICE]` | Verify the configuration: settings, adapters, registries, rules, pins. Exit code 1 if a check fails, with the fix. Also `ac2 config check`. |
 | `ac2 config explain SERVICE` | Every setting of a service and where it came from. Secrets are masked. |
 | `ac2 config options [PORT [NAME]]` | The adapters of a section, or the options of one adapter with their defaults. |
@@ -38,7 +38,7 @@ ac2 errors                              # list what failed, with the stack trace
 | `ac2 graph AGENT` | The graph of an agent as a Mermaid diagram. |
 | `ac2 run SERVICE` | Start a service and keep it running. What it writes is shown as it is written and kept in its log. |
 | `ac2 services` | List Phoenix with its state and address; also `ac2 services list`. |
-| `ac2 services start [NAME]` | Install what is missing, start in the background and wait until it answers. |
+| `ac2 services start [NAME]` | Start a service the SDK installed, in the background, and wait until it answers. |
 | `ac2 services stop [NAME]` | Ask a service to stop, as Ctrl+C does, and wait until it has. |
 | `ac2 logs [SERVICE]` | Read the log of a service, of Phoenix, or of all of them. |
 | `ac2 errors [SERVICE]` | List the failures: the exact message, what was expected and found, the fix, and the stack trace. |
@@ -88,35 +88,44 @@ there is nothing for `logs` and `errors` to read.
 
 ## Services
 
-Phoenix, the viewer for the traces of your agents, is a service of the SDK. A service runs on
-your machine only and keeps everything it needs in the workspace's state folder,
-`.agentcraft2/` in the workspace (or under `AC2_HOME` when that is set), which Git ignores:
+Phoenix, the viewer for the traces of your agents, is a service of the SDK. The SDK installs it
+once, with itself, and `ac2` only starts and stops it: there is no `ac2` command that installs a
+service. That keeps the SDK's tools apart from your agents, and from the packages `ac2 install`
+puts in your Python.
 
-| Path | Holds |
+**Where things are.** The code of a service is in the SDK's own folder, `AC2_SDK_PATH`: by
+default `agentcraft2-sdk` in `%LOCALAPPDATA%` on Windows, which belongs to the machine and is not
+roamed, and `~/.agentcraft2_sdk` elsewhere. The installer refuses a folder on a network drive or
+UNC path, inside OneDrive or in the roaming profile. What a service writes is in your workspace's
+state folder, `.agentcraft2/` (or under `AC2_HOME` when that is set), which Git ignores:
+
+| Where | Holds |
 | --- | --- |
-| `services/<name>/lib/` | the packages of the service, installed by pip into a folder of its own |
-| `services/<name>/data/` | its data, such as Phoenix's database of traces |
-| `services/<name>/run/` | what `ac2 services` and the service's supervisor say to each other |
-| `logs/<name>.log` | its log, beside the logs of your agents |
+| SDK folder `services/<name>/lib/` | the packages of the service, in a folder of their own |
+| SDK folder `services/<name>/installed.json` | which version of the SDK installed it |
+| workspace `.agentcraft2/services/<name>/data/` | its data, such as Phoenix's database of traces |
+| workspace `.agentcraft2/services/<name>/run/` | what `ac2 services` and the service's supervisor say to each other |
+| workspace `.agentcraft2/logs/<name>.log` | its log, beside the logs of your agents |
 
 ```bash
+python tools/install_sdk.py     # once, in your checkout of the SDK: installs the SDK and Phoenix
 ac2 services                    # what is installed and running, and where it listens
-ac2 services start              # install what is missing, start, wait until it answers
+ac2 services start              # start, wait until it answers
 ac2 services start phoenix      # one service
 ac2 services stop               # ask for a stop, wait for it
 ac2 logs phoenix                # read its log; ac2 errors lists what failed
 ```
 
-A new workspace gets a set of its own, so deleting a workspace deletes its services. Each
-service keeps its packages apart from the SDK's, because Phoenix and Agent Lab need packages
-that conflict with each other. On Windows keep the workspace in a short folder: the packages of
-Phoenix have paths of up to 150 characters below `lib/`, and Windows opens none longer than 259
-unless an administrator has enabled long paths; `start` checks this before it installs, and
-says how long a folder it needs. The first `start` installs them with the Python you run `ac2`
-with and its pip, so it needs your package index; the workspace's `agentcraft2.toml` says
-whether the packages come from the index or from a checkout of the SDK. `start` checks first
-that the port is free, and stops with the fix if it is not. Phoenix listens on
-`127.0.0.1:6006`, which is where an agent with `AC2_PHOENIX_ENABLED=true` sends its traces.
+Without a checkout, the installer is `python -m agentcraft2_cli.sdk install --version
+SPECIFIER`, and `python -m agentcraft2_cli.sdk check` says whether the tools are usable.
+
+`start` checks before it starts anything: the service must be installed by this version of the
+SDK (otherwise it says to run the installer again), its folders must be on a local disk, and
+its port must be free. Phoenix is one program on one port, `127.0.0.1:6006`, where an agent
+with `AC2_PHOENIX_ENABLED=true` sends its traces. If another workspace started it, `ac2 services`
+shows `running elsewhere`, `start` says where, and `stop` stops it from any workspace. On Windows
+the path to the packages has to leave room for Phoenix's longest file, 150 characters; the
+installer checks this before it changes anything.
 
 ## Settings
 

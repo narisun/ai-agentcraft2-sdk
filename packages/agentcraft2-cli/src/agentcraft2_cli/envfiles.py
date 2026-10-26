@@ -142,6 +142,7 @@ def variable_names() -> dict[str, str]:
     """Return the variable names used by generated docs and examples, by a short label."""
     return {
         **{f"phoenix_{label}": name for label, name in PHOENIX_LABELS.items()},
+        "sdk_path": variable_for(Key.SDK_PATH),
         "model_provider": variable_for(Key.MODEL_PROVIDER),
         "model_id": variable_for(Key.MODEL_ID),
         "model_aliases": variable_for(Key.MODEL_ALIASES),

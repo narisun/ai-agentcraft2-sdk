@@ -1,9 +1,10 @@
 # agentcraft2-phoenix
 
 Phoenix for agentcraft2: the viewer for the traces of agents, running on the developer's
-machine only. You do not install this package yourself. `ac2 services start phoenix`
-installs it, with the Phoenix release it was made for, into the workspace's own
-`.agentcraft2/services/phoenix` folder, and starts it.
+machine only. You do not install this package yourself. The SDK's installer
+(`python tools/install_sdk.py`) installs it, with the Phoenix release it was made for, into the
+SDK's own folder (`AC2_SDK_PATH`), and `ac2 services start phoenix` starts it. What it writes,
+such as traces, goes to the workspace's `.agentcraft2` folder.
 
 It differs from stock Phoenix in four ways:
 

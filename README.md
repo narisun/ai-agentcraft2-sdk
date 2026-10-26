@@ -324,12 +324,16 @@ PYTHON=python3
 "$PYTHON" tools/install_sdk.py --dev --editable
 ```
 
-`tools/install_sdk.py` is the one script that builds and installs the SDK. It checks the
-environment, looks for an SDK that is already installed, builds the packages, uninstalls the
-old SDK and only then installs the new one, printing each step as it goes and stopping at the
-first problem. With `--dev --editable` it installs the local packages, optional dependencies
-and development tools. Without options it builds wheels and installs them, as a consumer
-would get them (`--no-index --find-links=...` and other pip options are passed to pip). Then run these checks from
+`tools/install_sdk.py` is the one script that builds and installs the SDK, with its tools. It
+checks the environment, looks for an SDK that is already installed, builds the packages,
+uninstalls the old SDK and its tools, and only then installs the new ones, printing each step as
+it goes and stopping at the first problem. The tools, Phoenix for traces and Agent Lab to come,
+go in the SDK's own folder, `AC2_SDK_PATH` (by default `agentcraft2-sdk` in `%LOCALAPPDATA%` on
+Windows, never in a roaming or network folder, and `~/.agentcraft2_sdk` elsewhere); `ac2 services`
+starts and stops them. With `--dev --editable` it installs the local packages, optional
+dependencies and development tools, and `--no-services` leaves the tools out (CI does). Without
+options it builds wheels and installs them, as a consumer would get them (`--no-index
+--find-links=...` and other pip options are passed to pip). Then run these checks from
 the library root, replacing `"%PYTHON%"` with `"$PYTHON"` on macOS/Linux:
 
 ```bat

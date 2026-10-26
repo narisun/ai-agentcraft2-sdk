@@ -436,7 +436,13 @@ class Scaffolder:
 
     def _workspace_files(self, answers: WorkspaceAnswers) -> dict[PurePosixPath, str]:
         return self._renderer.render(
-            "workspace", {"name": answers.name, "owner": answers.owner, "library": answers.library}
+            "workspace",
+            {
+                "name": answers.name,
+                "owner": answers.owner,
+                "library": answers.library,
+                "var": variable_names(),
+            },
         )
 
     def _server_files(
