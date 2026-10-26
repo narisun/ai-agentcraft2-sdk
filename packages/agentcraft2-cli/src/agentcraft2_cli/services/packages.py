@@ -76,6 +76,7 @@ def install(
     requirements: Sequence[str],
     *,
     pip: PipRunner = run_pip,
+    quiet: bool = False,
 ) -> None:
     """Build and check a new package set, and replace the old one only when it is good.
 
@@ -83,6 +84,7 @@ def install(
         base: The service's folder; the packages go in its ``packages`` folder.
         requirements: The pip arguments that name what to install, such as ``-e path[extra]``.
         pip: Runs pip; a test passes its own.
+        quiet: Whether pip prints only problems, not every package it collects.
 
     Raises:
         CliError: If pip fails or the installed set has broken requirements. The earlier
@@ -93,7 +95,8 @@ def install(
     staging = destination.with_name(f".{destination.name}-{uuid4().hex}")
     previous = destination.with_name(f".{destination.name}-previous-{uuid4().hex}")
     try:
-        code = pip(["install", "--no-user", "--target", str(staging), *requirements], base)
+        flags = ["-q"] if quiet else []
+        code = pip(["install", *flags, "--no-user", "--target", str(staging), *requirements], base)
         if code != 0:
             raise CliError(
                 f"pip could not install the packages (exit code {code}); its output is above",

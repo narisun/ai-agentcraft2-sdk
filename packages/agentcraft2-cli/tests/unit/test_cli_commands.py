@@ -281,6 +281,9 @@ def test_new_agent_adds_an_agent_linked_to_the_servers_it_names(
     assert 'description = "Says hello."' in files[service + "pyproject.toml"]
     (agent,) = read_agents(workspace)
     assert (agent.id, agent.mcp_servers, agent.owner) == ("hello-agent", ("hello",), "demo-team")
+    # Agent Lab calls only an agent with a loopback address, so the entry carries the agent's own.
+    assert agent.url is not None
+    assert agent.url.startswith("http://127.0.0.1:")
     assert rule_ids(workspace)[3:] == [
         "hello-agent-uses-its-models",
         "hello-agent-calls-its-own-tools",

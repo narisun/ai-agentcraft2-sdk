@@ -49,6 +49,7 @@ def install_services(
     free_space: Callable[[Path], int] = free_bytes,
     check_paths: Callable[[ServiceSpec, Path], None] = check_path_length,
     version: str = __version__,
+    quiet: bool = False,
 ) -> None:
     """Install the services into the SDK's folder, checking everything before the first change.
 
@@ -62,6 +63,7 @@ def install_services(
         free_space: Says how much room a folder's disk has.
         check_paths: Refuses a folder whose files Windows would not open; a test passes its own.
         version: The SDK's version, recorded with each installed service.
+        quiet: Whether pip prints only problems, not every package it collects.
 
     Raises:
         CliError: At the first problem, with what to do about it. Nothing is changed by a
@@ -91,7 +93,7 @@ def install_services(
     for spec in chosen:
         target = installed_dir(sdk, spec.name)
         say(f"Installing {spec.name} into {target}")
-        packages.install(target, _requirements(spec, library), pip=pip)
+        packages.install(target, _requirements(spec, library), pip=pip, quiet=quiet)
         (target / INSTALLED).write_text(
             json.dumps(
                 {
@@ -153,12 +155,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     where = install.add_mutually_exclusive_group()
     where.add_argument("--checkout", type=Path, help="install from this checkout of the SDK")
     where.add_argument("--version", help="install this version from the package index")
+    install.add_argument(
+        "--verbose", action="store_true", help="show everything pip prints, not only problems"
+    )
     commands.add_parser("check", help="say whether the services are installed and usable")
     arguments = parser.parse_args(argv)
     try:
         sdk = sdk_path()
         if arguments.command == "install":
-            install_services(sdk, _library(arguments.checkout, arguments.version))
+            install_services(
+                sdk,
+                _library(arguments.checkout, arguments.version),
+                quiet=not arguments.verbose,
+            )
         else:
             check_services(sdk)
     except CliError as problem:

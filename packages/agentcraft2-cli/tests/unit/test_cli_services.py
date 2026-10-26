@@ -169,6 +169,20 @@ def test_an_install_builds_aside_checks_and_then_replaces_the_old_packages(
     assert [item.name for item in old.parent.iterdir()] == ["lib"]
 
 
+def test_pip_prints_only_problems_when_asked_to_be_quiet(tmp_path: Path) -> None:
+    asked: list[Sequence[str]] = []
+
+    def pip(arguments: Sequence[str], folder: Path) -> int:
+        asked.append(arguments)
+        Path(arguments[arguments.index("--target") + 1]).mkdir(parents=True)
+        return 0
+
+    packages.install(tmp_path / "a", ["x"], pip=pip, quiet=True)
+    packages.install(tmp_path / "b", ["x"], pip=pip)
+    assert asked[0][:2] == ["install", "-q"]
+    assert "-q" not in asked[1]
+
+
 def test_a_failed_install_keeps_the_old_packages_and_says_what_to_do(tmp_path: Path) -> None:
     base = tmp_path / "phoenix"
     old = packages.site_packages(base)

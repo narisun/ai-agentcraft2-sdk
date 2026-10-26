@@ -601,11 +601,19 @@ def remove_tools(sdk: Path) -> list[str]:
     return removed
 
 
-def install_tools(sdk: Path) -> list[str]:
+def install_tools(sdk: Path, verbose: bool = False) -> list[str]:
     """Install the SDK's tools with the SDK that was just installed."""
     environment = {**os.environ, "AC2_SDK_PATH": str(sdk)}
     done = subprocess.run(  # noqa: S603 - this Python, running the SDK's own installer
-        [sys.executable, "-m", "agentcraft2_cli.sdk", "install", "--checkout", str(ROOT)],
+        [
+            sys.executable,
+            "-m",
+            "agentcraft2_cli.sdk",
+            "install",
+            "--checkout",
+            str(ROOT),
+            *(["--verbose"] if verbose else []),
+        ],
         env=environment,
         cwd=ROOT,
         check=False,
@@ -699,7 +707,11 @@ def steps(
     complete([])
 
     begin()
-    complete(install_tools(sdk) if sdk is not None else ["skipped: --no-services"])
+    complete(
+        install_tools(sdk, getattr(arguments, "verbose", False))
+        if sdk is not None
+        else ["skipped: --no-services"]
+    )
 
     begin()
     complete([*verify(), *(check_tools(sdk) if sdk is not None else [])])

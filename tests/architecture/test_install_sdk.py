@@ -524,7 +524,7 @@ def test_the_tools_are_installed_after_the_sdk_and_checked_after_that(
 def test_a_failed_tool_install_stops_with_the_sdk_installed_and_says_so(
     calls: list[str], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    def fail(sdk: Path) -> None:
+    def fail(sdk: Path, verbose: bool = False) -> None:
         raise install_sdk.SetupError("the SDK's tools could not be installed", "run it again")
 
     monkeypatch.setattr(install_sdk, "install_tools", fail)

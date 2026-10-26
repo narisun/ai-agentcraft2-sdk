@@ -155,7 +155,7 @@ def test_main_installs_from_a_checkout_into_ac2_sdk_path(
     seen: list[tuple[Path, LibrarySource]] = []
     monkeypatch.setenv("AC2_SDK_PATH", str(tmp_path / "sdk"))
     monkeypatch.setattr(
-        installer, "install_services", lambda sdk, library: seen.append((sdk, library))
+        installer, "install_services", lambda sdk, library, **_: seen.append((sdk, library))
     )
     checkout = tmp_path / "checkout"
     (checkout / "packages" / "agentcraft2-core").mkdir(parents=True)

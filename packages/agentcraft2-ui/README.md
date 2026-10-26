@@ -98,7 +98,9 @@ python3 -m rmprep.service --host 127.0.0.1 --port 8000
 ```
 
 The checked-in `rmprep` entry in `examples\rmprep\registry\agents.yaml` includes
-this address. For another agent, add its address at the same indentation as `owner`:
+this address, and `ac2 new agent` writes one for every agent it creates (the agent's own
+port on `127.0.0.1`). For an agent registered some other way, add its address at the same
+indentation as `owner`:
 
 ```yaml
   url: http://127.0.0.1:8000
