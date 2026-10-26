@@ -54,7 +54,7 @@ On macOS/Linux, use a bash or zsh terminal. Write `LIBRARY="$PWD"` and
 | Command | What it does |
 | --- | --- |
 | `agentcraft2 init NAME` | Creates the workspace folder with shared registry and rules files |
-| `agentcraft2 install [--no-dev]` | Installs all workspace services and their dependencies using the current Python's pip |
+| `agentcraft2 install [--no-dev]` | Installs this workspace's agents and MCP servers, their dependencies and the development tools using the current Python's pip. It never installs the SDK, which has its own installer; it stops with the fix if the SDK is missing |
 | `agentcraft2 new mcp NAME` | Adds an MCP server: one plain tool, one governed query over a sample CSV file, tests |
 | `agentcraft2 new mcp NAME --from-csv DIR` | Adds an MCP server over your own CSV files, with tools proposed from what is in them |
 | `agentcraft2 new mcp NAME --from-openapi FILE` | Adds an MCP server over a REST API, with one tool for each GET operation that answers with records |

@@ -108,12 +108,13 @@ Here is what the setup commands did:
 | `init tutorial` | Creates the application workspace |
 | `--lib-path` | Selects this library checkout as the workspace's library source |
 | `new agent helper` | Writes the agent, configuration, and tests |
-| `install` | Uses the current Python's pip to install workspace services and development tools |
+| `install` | Uses the current Python's pip to install this workspace's services and development tools; it never installs the SDK |
 | `python -m pytest` | Runs the generated tests |
 | `python -m helper` | Asks the generated agent one question |
 
 Run `"%PYTHON%" -m agentcraft2_cli install` again whenever you add a service
-or change its dependencies.
+or change its dependencies. It installs only your workspace; if the SDK is missing it stops
+and says how to install it (`python tools/install_sdk.py`, in the SDK checkout).
 
 ### Command convention for the rest of this tutorial
 
