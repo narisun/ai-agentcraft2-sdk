@@ -1860,14 +1860,14 @@ async def classify(
   <p>Use this workflow for changes to shared library behavior. Run it from the
   <strong>library checkout</strong>:</p>
 <pre><code class="language-bat">cd /d "%LIBRARY%"
-"%PYTHON%" tools/install_dev.py
+"%PYTHON%" tools/install_sdk.py --dev --editable
 "%PYTHON%" -m pytest
 "%PYTHON%" -m ruff check .
 "%PYTHON%" -m ruff format --check .
 "%PYTHON%" -m mypy
 "%PYTHON%" -c "from importlinter.cli import lint_imports; lint_imports()"</code></pre>
   <p>On macOS/Linux, use <code>cd "$LIBRARY"</code> for the first line and
-  <code>"$PYTHON"</code> for the Python commands. The installation helper uses pip.
+  <code>"$PYTHON"</code> for the Python commands. The installation script checks the environment, replaces any installed SDK and stops at the first problem.
   Import-linter checks that code respects the package dependency boundaries.</p>
   <p>For changes to Agent Lab, use its isolated package launcher and
   <a href="../packages/agentcraft2-ui/README.md#run-the-checks-and-build-a-wheel">UI checks</a>.
