@@ -9,6 +9,7 @@ import jinja2
 import pytest
 import yaml
 
+from agentcraft2_cli.commands import common
 from agentcraft2_cli.envfiles import agent_env, mcp_env, variable_names
 from agentcraft2_cli.errors import CliError
 from agentcraft2_cli.formatting import format_python
@@ -123,6 +124,41 @@ def test_a_library_source_names_where_it_installs_from(tmp_path: Path) -> None:
         LibrarySource(kind="path")
     with pytest.raises(CliError, match="version"):
         LibrarySource(kind="index")
+
+
+@pytest.mark.parametrize(
+    ("installed", "required"),
+    [("0.1.0", ">=0.1,<0.2"), ("0.4.7.dev3", ">=0.4,<0.5"), ("1.4.2", ">=1.4,<2")],
+)
+def test_without_a_checkout_a_workspace_requires_the_installed_sdk(
+    monkeypatch: pytest.MonkeyPatch, installed: str, required: str
+) -> None:
+    monkeypatch.setattr(common, "_checkout", lambda: None)
+    monkeypatch.setattr(common, "__version__", installed)
+    source = common.library_source(None, None)
+    assert (source.kind, source.version, source.path) == ("index", required, None)
+
+
+def test_a_checkout_or_an_explicit_choice_beats_the_installed_sdk(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(common, "__version__", "0.1.0")
+    monkeypatch.setattr(common, "_checkout", lambda: None)
+    assert common.library_source(None, ">=0.3").version == ">=0.3"
+    root = Path(__file__).resolve().parents[4]
+    assert common.library_source(root, None).kind == "path"
+    monkeypatch.setattr(common, "_checkout", lambda: root)
+    assert common.library_source(None, None).kind == "path"
+
+
+def test_an_sdk_that_is_not_installed_is_named_with_the_fix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(common, "_checkout", lambda: None)
+    monkeypatch.setattr(common, "__version__", "0.0.0")
+    with pytest.raises(CliError, match="not installed") as caught:
+        common.library_source(None, None)
+    assert "install_sdk.py" in str(caught.value)
 
 
 # ------------------------------------------------------------------ rendering

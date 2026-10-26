@@ -265,9 +265,12 @@ assert main(["new", "mcp", "hello-mcp"], toolbox=toolbox_for_tests(pins={})) == 
 
 ## Where a workspace gets the library
 
-From the checkout the command runs from, by path, until the library is on a
-package index. Then create a workspace with
-`agentcraft2 init NAME --lib-version ">=0.1"`. The recorded library source in
+From the SDK that is installed. `agentcraft2 init NAME` records the versions of the installed
+SDK as the workspace's requirement (for example `>=0.1,<0.2`), so the workspace holds no path
+to a checkout and `agentcraft2 install` finds the SDK already there; it needs no package index
+until you move to another SDK version. A command that runs from a checkout of the SDK (an
+editable install) records that checkout by path instead. Choose either yourself with
+`--lib-path <checkout>` or `--lib-version ">=0.1"`. The recorded library source in
 `agentcraft2.toml` controls `agentcraft2 install`; optional `[tool.uv.sources]`
 metadata is only used by uv.
 
