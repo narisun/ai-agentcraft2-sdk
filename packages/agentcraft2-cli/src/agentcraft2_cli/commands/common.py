@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-import sys
 from pathlib import Path
 
 import click
@@ -26,7 +25,6 @@ __all__ = [
     "pass_toolbox",
     "port_of",
     "print_report",
-    "program_name",
     "workspace_option",
     "workspace_root",
 ]
@@ -42,16 +40,6 @@ workspace_option = click.option(
     default=None,
     help="A folder inside the workspace. Default: the current folder.",
 )
-
-
-def program_name() -> str:
-    """Return how the person ran this command, so that what it suggests next can be pasted.
-
-    That is ``ac2`` or ``agentcraft2`` when they ran the command by its name, and
-    ``python -m agentcraft2_cli`` otherwise.
-    """
-    stem = Path(sys.argv[0]).stem.lower() if sys.argv and sys.argv[0] else ""
-    return stem if stem in {"ac2", "agentcraft2"} else "python -m agentcraft2_cli"
 
 
 def _checkout() -> Path | None:

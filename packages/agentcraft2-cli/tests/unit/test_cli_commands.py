@@ -115,7 +115,7 @@ def test_init_creates_workspace_docs_and_samples_without_services(
     workspace = tmp_path / "demo"
     out = capsys.readouterr().out
     assert "created  pyproject.toml" in out
-    assert "python -m agentcraft2_cli new mcp hello-mcp" in out
+    assert "agentcraft2 new mcp hello-mcp" in out
     files = tree(workspace)
     assert sorted(files) == [
         ".github/workflows/check.yml",
@@ -200,7 +200,7 @@ def test_new_mcp_adds_a_server_registers_it_and_adds_its_rules(
     assert run("new", "mcp", "hello-mcp", "--no-pin", "--workspace", workspace) == 0
     out = capsys.readouterr().out
     assert "MCP server hello-mcp (registry ID hello)" in out
-    assert "python -m agentcraft2_cli run hello-mcp" in out
+    assert " run hello-mcp" in out
     files = tree(workspace)
     service = "mcp-servers/hello-mcp/"
     assert {name.removeprefix(service) for name in files if name.startswith(service)} == {

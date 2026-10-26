@@ -6,6 +6,7 @@ from agentcraft2_core.observability.errors import (
     explain,
     report_error,
     shows_details,
+    stack_trace,
     your_code,
 )
 from agentcraft2_core.observability.logs import (
@@ -37,6 +38,7 @@ __all__ = [
     "redact",
     "report_error",
     "shows_details",
+    "stack_trace",
     "start_telemetry",
     "your_code",
 ]

@@ -14,13 +14,12 @@ from agentcraft2_cli.commands.common import (
     pass_toolbox,
     port_of,
     print_report,
-    program_name,
     workspace_option,
     workspace_root,
 )
 from agentcraft2_cli.commands.data_options import print_proposal, proposal_for, redshift_options
 from agentcraft2_cli.create_mcp import create_mcp, default_description
-from agentcraft2_cli.errors import CliError
+from agentcraft2_cli.errors import CliError, invocation
 from agentcraft2_cli.files import read_text
 from agentcraft2_cli.names import check_name, server_id_for
 from agentcraft2_cli.toolbox import Toolbox
@@ -76,7 +75,24 @@ def init(
     answers_file: Path | None,
     force: bool,
 ) -> None:
-    """Create a workspace folder called NAME."""
+    """Create a workspace folder called NAME: the project that holds your agents.
+
+    A workspace is one folder with a place for agents (agents/), for MCP servers that give
+    them tools (mcp-servers/), for the registries and the policy rules every service shares,
+    and for the checks CI runs. Nothing is installed and nothing leaves your machine.
+
+    \b
+    Examples:
+      ac2 init my-workspace                 create ./my-workspace
+      ac2 init my-workspace --owner payments-team
+      ac2 init my-workspace --dir ~/work    create it under ~/work
+      ac2 init my-workspace --lib-version ">=0.1"
+                                            install the library from a package index
+                                            instead of this checkout
+      ac2 init --answers agentcraft2.toml   recreate a workspace from its answers file
+
+    Next: cd into it, then 'ac2 new agent <name>' and 'ac2 new mcp <name>'.
+    """
     if answers_file is not None:
         answers = WorkspaceAnswers.from_toml(
             read_text(answers_file, what="the answers file"), what=str(answers_file)
@@ -95,21 +111,35 @@ def init(
     report = tools.scaffolder().init(root, answers, force=force)
     click.echo(f"Workspace {answers.name} at {root}")
     print_report(report, root)
-    program = program_name()
+    run = invocation()
     click.echo(
         "\nNext:\n"
         f"  cd {root}\n"
-        f'  {program} new mcp hello-mcp --description "What the server offers"\n'
-        f'  {program} new agent hello-agent --mcp hello --description "What the agent does"'
+        f'  {run} new mcp hello-mcp --description "What the server offers"\n'
+        f'  {run} new agent hello-agent --mcp hello --description "What the agent does"'
         " --model fake\n"
-        f"  {program} install\n"
-        f"  {program} check"
+        f"  {run} install\n"
+        f"  {run} check\n"
+        f"  {run} doctor\n"
+        f"  {run} run hello-agent        # then: {run} logs hello-agent, {run} errors"
     )
 
 
 @click.group()
 def new() -> None:
-    """Add a service to the workspace."""
+    """Add a service to the workspace: an agent, or an MCP server that gives agents tools.
+
+    Each is written with its tests, its settings (.env.example, and .env for you to edit),
+    its registry entry and the policy rules it needs, and the tests pass with no account.
+
+    \b
+    Examples:
+      ac2 new agent helper                  an agent that answers with a scripted model
+      ac2 new agent helper --model bedrock  an agent on Amazon Bedrock (needs AWS sign-in)
+      ac2 new mcp people                    an MCP server over sample CSV data
+      ac2 new mcp people --from-csv ./data  an MCP server over your own CSV files
+      ac2 new agent helper --mcp people     an agent that may call the server's tools
+    """
 
 
 @new.command("agent")
@@ -139,7 +169,22 @@ def new_agent(
     force: bool,
     workspace: Path | None,
 ) -> None:
-    """Add a hello-world LangGraph agent called NAME, with its tests."""
+    """Add a hello-world LangGraph agent called NAME, with its tests.
+
+    The agent is a LangGraph graph you edit (src/<name>/graph.py), a tool or two
+    (tools.py), and an HTTP entry point that serves it. With --model fake it needs no
+    account; with --model anthropic it reads ANTHROPIC_API_KEY, and with --model bedrock
+    it signs in with your AWS profile (AWS_PROFILE, AWS_REGION).
+
+    \b
+    Examples:
+      ac2 new agent helper
+      ac2 new agent helper --description "Greets people by name."
+      ac2 new agent analyst --model bedrock --mcp people
+      ac2 new agent helper --port 8010
+
+    Then: ac2 install, ac2 doctor helper, ac2 run helper.
+    """
     root = workspace_root(workspace)
     answers = load_answers(root)
     agent = AgentAnswers(
@@ -157,17 +202,19 @@ def new_agent(
     click.echo(f"Agent {agent.name} in {AGENTS_FOLDER}/{agent.name}")
     print_report(report, root)
     linked = [answers.mcp_server(name) for name in mcp_servers]
-    program = program_name()
     start = "".join(
-        f"  {program} run {server.name}        # in another terminal: the agent calls it\n"
+        f"  {invocation()} run {server.name}        # in another terminal: the agent calls it\n"
         for server in linked
         if server is not None
     )
+    run = invocation()
     click.echo(
         "\nNext:\n"
-        f"  {program} install\n"
-        f"  {program} check\n"
-        f'{start}  {agent.name} "Say hello to Ada."'
+        f"  {run} install\n"
+        f"  {run} check\n"
+        f"  {run} doctor {agent.name}\n"
+        f"{start}  {run} run {agent.name}        # serves it; {run} logs shows the log\n"
+        f'  {agent.name} "Say hello to Ada."'
     )
 
 
@@ -274,7 +321,7 @@ def new_mcp(
     print_report(created.report, root)
     if created.pin_note is not None:
         click.echo(created.pin_note, err=created.not_pinned is not None)
-    click.echo("\nNext:\n" + "\n".join(f"  {step}" for step in created.next_steps(program_name())))
+    click.echo("\nNext:\n" + "\n".join(f"  {step}" for step in created.next_steps))
 
 
 @click.command()
@@ -284,7 +331,15 @@ def new_mcp(
 @workspace_option
 @pass_toolbox
 def link(tools: Toolbox, agent: str, server: str, force: bool, workspace: Path | None) -> None:
-    """Let AGENT call the tools of the MCP server SERVER."""
+    """Let AGENT call the tools of the MCP server SERVER.
+
+    Adds the server to the agent's entry in the registry, the policy rules that let the
+    agent's callers use its tools, and the agent's test that calls it.
+
+    \b
+    Example:
+      ac2 link helper people
+    """
     root = workspace_root(workspace)
     answers = load_answers(root)
     report = tools.scaffolder().link(root, agent, server, answers=answers, force=force)
@@ -294,14 +349,14 @@ def link(tools: Toolbox, agent: str, server: str, force: bool, workspace: Path |
     if linked is not None:
         click.echo(
             f"\nFrom now on {agent} needs {linked.name} running: "
-            f"{program_name()} run {linked.name}\n"
-            f"The tests need nothing running: {program_name()} check"
+            f"{invocation()} run {linked.name}\n"
+            f"The tests need nothing running: {invocation()} check"
         )
 
 
 @click.group()
 def registry() -> None:
-    """Maintain the registries of the workspace."""
+    """Maintain the registries of the workspace: which agents and tool servers exist."""
 
 
 @registry.command("pin")

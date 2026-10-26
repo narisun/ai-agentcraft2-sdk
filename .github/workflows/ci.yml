@@ -51,7 +51,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      - run: python tools/install_sdk.py --dev --editable
+      - run: python tools/install_sdk.py --dev --editable --no-services
       - run: python -m ruff check .
       - run: python -m ruff format --check .
       - run: python -m mypy
@@ -84,7 +84,7 @@ jobs:
         with:
           terraform_version: "1.9.8"
           terraform_wrapper: false
-      - run: python tools/install_sdk.py --dev --editable
+      - run: python tools/install_sdk.py --dev --editable --no-services
       - run: python -m pytest -q -m integration
 
   consumer:
@@ -115,5 +115,5 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: python tools/install_sdk.py --dev --editable
+      - run: python tools/install_sdk.py --dev --editable --no-services
       - run: python -m pytest packages/agentcraft2-cli/tests/unit/test_cli_deploy.py -q -m container

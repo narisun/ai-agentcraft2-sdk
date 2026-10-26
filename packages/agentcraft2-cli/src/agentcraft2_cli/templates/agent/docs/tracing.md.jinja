@@ -7,10 +7,10 @@ trace viewer that runs separately from the agent.
 
 ## 1. Run Phoenix on your machine
 
-`ac2 services` is planned to install, start and stop Phoenix; until it is released, no
-command in the ai-agentcraft2-sdk repository starts it. A Phoenix server on your machine at
-`http://127.0.0.1:6006` receives the traces below. The repository's `docs/phoenix-trial.md`
-describes what it shows.
+The SDK's installer installs Phoenix, and `ac2 services start phoenix` starts it on your
+machine at `http://127.0.0.1:6006` (`ac2 services` lists it, and `ac2 services stop phoenix`
+stops it). It receives the traces below. The repository's `docs/phoenix-trial.md` describes what
+it shows.
 
 Phoenix is a tool for your own machine. It needs no key, and traces are never sent to
 another host: the agent refuses any address that is not on this machine, and a

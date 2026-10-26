@@ -4,14 +4,16 @@ Phoenix gives Agent Lab a timeline of each agent response: model messages, MCP
 calls, token usage, duration, and links back to checkpoint IDs. It is the only
 agent-tracing backend the library ships, and it stays off until you enable it.
 
+In a workspace made with `ac2`, the SDK's installer installs Phoenix with the SDK and
+`ac2 services start phoenix` starts it; see [the `ac2` reference](cli.md#services).
+
 Phoenix runs on your own machine, with traces in one SQLite file. It needs no account
 and no key, and nothing leaves the machine: [traces stay on your machine](#traces-stay-on-your-machine).
 
 **Starting Phoenix.** The `start-phoenix` and `start-local` launchers that used to start
-it have been removed. `ac2 services` is planned to install, start and stop Phoenix with
-Agent Lab; until it is released, no command in this repository starts a Phoenix server. This
-page explains what to turn on in the agent, the settings, trace inspection, privacy, and the
-captured verification results.
+it have been removed. The SDK's installer installs Phoenix, and `ac2 services start phoenix`
+starts it. This page explains what to turn on in the agent, the settings, trace inspection,
+privacy, and the captured verification results.
 
 For the first-run path with Agent Lab, use [local startup and testing](local-startup.md).
 Commands are shown for Command Prompt. On macOS/Linux, open a bash or zsh terminal
@@ -52,8 +54,17 @@ troubleshooting.
 
 Phoenix is the `arize-phoenix==20.21.1` package. Your package administrators must make it
 and compatible wheels for your platform available through the enterprise package
-repository. `ac2 services` is planned to install it with the SDK and to start and stop it.
-Until that is released, this repository has no command that starts it.
+repository. The SDK's installer installs it with the SDK (in the SDK's own folder, apart from
+your workspaces), and `ac2 services` starts and stops it:
+
+```bat
+ac2 services
+ac2 services start phoenix
+ac2 services stop phoenix
+```
+
+`ac2 services` lists each service with its state. Phoenix serves only this machine, on
+`http://127.0.0.1:6006`; its traces, logs and run state go in the workspace's `.agentcraft2` folder.
 
 A Phoenix server that listens on `http://127.0.0.1:6006` (or `localhost`, or `[::1]`, with
 an optional port) receives spans at `http://127.0.0.1:6006/v1/traces`. The agent accepts only

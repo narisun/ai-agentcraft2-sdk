@@ -23,6 +23,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PACKAGES = (
     Path("packages/agentcraft2-core/src/agentcraft2_core/config"),
     Path("packages/agentcraft2-ui/src/agentcraft2_ui/config"),
+    Path("packages/agentcraft2-phoenix/src/agentcraft2_phoenix/config"),
 )
 
 

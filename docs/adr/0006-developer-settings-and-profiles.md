@@ -189,6 +189,30 @@ layering, pinned ADOT install, MCP proxy and CA handling), then profiles and
 the explicit deployment environment, then `AC2_HOME`, then the settings file and
 its schema, then the remote MCP token file.
 
+## Amendment, 2026-10-25: the SDK's own folder
+
+`AC2_HOME` is the project's folder. A second folder belongs to the machine: where the SDK keeps
+the tools it provides for developers, Phoenix and later Agent Lab. `AC2_SDK_PATH` names it.
+
+- **Installed with the SDK, never by `ac2`.** `tools/install_sdk.py` installs the packages and then
+  the tools, each in a folder of its own, because the tools' packages conflict with each other
+  and with the SDK's. `ac2 services` only lists, starts and stops them, and `ac2 install` installs
+  only a workspace's own agents and MCP servers. The same installer is reachable without a
+  checkout as `python -m agentcraft2_cli.sdk`, which is not an `ac2` command.
+- **Code with the SDK, data with the project.** The tools' packages are in the SDK's folder. What
+  they write (Phoenix's traces, logs, run state) is in the workspace's `.agentcraft2/`, so a
+  workspace holds only what is its own and deleting it deletes its traces.
+- **A local disk, never roamed.** The default is `agentcraft2-sdk` in `%LOCALAPPDATA%` on Windows,
+  which is local to the machine, and `~/.agentcraft2_sdk` elsewhere; `%APPDATA%`, the roaming
+  folder, is never used. The installer refuses a folder on a network drive or a UNC path, in
+  OneDrive or in the roaming profile, and `ac2 services start` refuses to run a service from one
+  or to write its data to one (Phoenix keeps SQLite, which a share corrupts).
+- **One of each per machine.** Phoenix is one program on one port. The SDK folder records which
+  workspace started it, so another workspace is told where it runs and may stop it.
+- **Process environment only.** Like `AC2_HOME`, the variable is refused inside a `.env`.
+- **Versioned together.** Each tool records the SDK version that installed it, and `ac2 services
+  start` refuses a tool from another version with the fix: run the installer again.
+
 ## Owner
 
 Library maintainers.

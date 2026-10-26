@@ -107,9 +107,10 @@ def test_telemetry_is_stopped_and_a_library_error_is_explained_when_serving_fail
     assert recorder.steps == ["load", "logging", "telemetry", "stop"]
     out, err = capsys.readouterr()
     assert out == ""
-    assert err.startswith("accounts-serve: ConfigurationError: the port is taken\n")
+    assert "accounts-serve: ConfigurationError: the port is taken\n" in err
     assert "  expected: a free port\n" in err
-    assert "Traceback" not in err
+    # On a developer's machine the stack trace comes with the explanation.
+    assert err.startswith("Traceback (most recent call last):")
 
 
 def test_a_deprecated_spelling_is_told_once_logging_is_set_up(
@@ -140,7 +141,7 @@ def test_the_program_name_defaults_to_the_application(
         raise ConfigurationError("no model")
 
     assert run_service("accounts-agent", serve) == 1
-    assert capsys.readouterr().err.startswith("accounts-agent: ConfigurationError: no model\n")
+    assert "accounts-agent: ConfigurationError: no model\n" in capsys.readouterr().err
 
 
 def test_an_interrupted_service_exits_130_and_says_nothing(
@@ -218,7 +219,7 @@ def test_a_failing_command_is_explained_under_its_name(
     assert run_command("hello-agent", run) == 1
     out, err = capsys.readouterr()
     assert out == ""
-    assert err.startswith("hello-agent: ValidationFailed: the answer is not text\n")
+    assert "hello-agent: ValidationFailed: the answer is not text\n" in err
 
 
 def test_an_interrupted_command_exits_130(

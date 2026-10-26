@@ -32,7 +32,7 @@ from agentcraft2_cli.deploy.agentcore import (
     strip_agentcore,
 )
 from agentcraft2_cli.deploy.target import AGENTCORE, AWS_DISTRIBUTION, Target
-from agentcraft2_cli.errors import CliError
+from agentcraft2_cli.errors import CliError, invocation
 from agentcraft2_cli.workspace import WorkspaceAnswers
 from agentcraft2_core.config import (
     LEGACY_PREFIX,
@@ -347,7 +347,7 @@ def missing_dependencies(
         problems.append(
             f"{', '.join(labels)} need {what}, which {target.name} does not install; "
             f'list "{requirement}" in the dependencies in {target.folder}/pyproject.toml '
-            "and run 'python -m agentcraft2_cli install'"
+            f"and run '{invocation()} install'"
         )
     return problems
 

@@ -11,8 +11,8 @@ Install it with the Python package `agentcraft2-ui`; commands continue to use
 To test the included rmprep agent, follow the
 [local startup and testing guide](../../docs/local-startup.md). It covers the
 model settings, access code and sample questions. The instructions below start
-Agent Lab and connect it to an agent, rmprep or **your own**. `ac2 services` is
-planned to install, start and stop Agent Lab and Phoenix for you.
+Agent Lab and connect it to an agent, rmprep or **your own**. `ac2 services` already
+starts and stops Phoenix; Agent Lab will join it.
 
 Use steps 1–4 below to connect your own agents. After your first chat, see
 [responses and inspection](#responses-and-inspection), [memos](#memos-beside-chat),
@@ -501,9 +501,8 @@ preview does not imply approval for shared production hosting.
 ## Local Phoenix tracing
 
 The [Phoenix trial](../../docs/phoenix-trial.md) describes the traces Agent Lab links to.
-This checkout has no command that starts Phoenix; `ac2 services` is planned to install,
-start and stop it. When a Phoenix server is running on this machine and tracing is on,
-each response links to its trace using **Open trace in Agent Lab**.
+Start Phoenix with `ac2 services start phoenix`. When it is running and tracing is on in the
+agent's `.env`, each response links to its trace using **Open trace in Agent Lab**.
 The **Logs** page provides local diagnostic inspection.
 
 ## Chat with an agent on AgentCore Runtime

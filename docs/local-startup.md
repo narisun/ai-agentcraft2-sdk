@@ -7,9 +7,9 @@ browser. For Anthropic answers, you also need an approved API key and model. Use
 provider approved to receive the example business data.
 
 The `setup-local`, `start-local`, `stop-local` and `start-phoenix` launchers have been
-removed. `ac2 services` is planned to install, start and stop Agent Lab and Phoenix; until
-it is released you start each piece yourself, as below. Phoenix has no start command in
-this checkout, so the walkthrough runs without traces.
+removed. Phoenix is installed with the SDK and `ac2 services start phoenix` starts it (see
+[the `ac2` reference](cli.md#services)); Agent Lab will join `ac2 services`, and until then
+you start it yourself, as below. The walkthrough works with or without Phoenix.
 
 Commands are shown for **Command Prompt (cmd.exe)**. On macOS/Linux, open a bash or zsh
 terminal and use `python3` for `python`, `/` for `\`, and `cat` for `type`.

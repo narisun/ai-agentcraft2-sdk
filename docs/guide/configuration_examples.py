@@ -173,6 +173,13 @@ def configuration_examples() -> dict[str, EnvironmentExample]:
             "the state under `.agentcraft2/`. Set it in the shell, not in a `.env`, which it "
             "locates. A service's own `.env` keeps its paths relative to itself.",
         ),
+        Key.SDK_PATH: EnvironmentExample(
+            "Optional: where the SDK keeps Phoenix and Agent Lab, e.g. `C:\ac2-sdk`",
+            "Unset: a deployment installs no developer tools",
+            "Names the folder the SDK installs its tools in, once, with itself; `ac2 services` "
+            "starts and stops them from there. It must be on a local disk: a network drive, "
+            "OneDrive and the roaming profile are refused. Set it in the shell, not in a `.env`.",
+        ),
         Key.PROFILE: EnvironmentExample(
             "`local`",
             "`aws`",

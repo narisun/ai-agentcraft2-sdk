@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from agentcraft2_cli.errors import CliError
+from agentcraft2_cli.errors import CliError, invocation
 from agentcraft2_cli.readers import Proposal
 from agentcraft2_cli.render import Report
 from agentcraft2_cli.scaffold import Scaffolder
@@ -59,16 +59,13 @@ class McpCreated:
             )
         return None
 
-    def next_steps(self, program: str) -> list[str]:
-        """What to do next, one command per line.
-
-        Args:
-            program: How the person ran the command, to suggest the commands the same way.
-        """
+    @property
+    def next_steps(self) -> list[str]:
+        """What to do next, one command per line."""
         return [
-            f"{program} install",
-            f"{program} check",
-            f"{program} run {self.server.name}",
+            f"{invocation()} install",
+            f"{invocation()} check",
+            f"{invocation()} run {self.server.name}",
         ]
 
 
