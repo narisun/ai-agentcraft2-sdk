@@ -43,14 +43,14 @@ PYTHON=python3
 ```
 
 If this checkout moved, update its path in `agentcraft2.toml` and the variable
-above. Install the CLI once using the selected Python:
+above. Install the SDK once, with its own installer, using the selected Python:
 
 ```bat
-"%PYTHON%" -m pip install -e "%LIBRARY%/packages/agentcraft2-core" -e "%LIBRARY%/packages/agentcraft2-cli"
+"%PYTHON%" "%LIBRARY%/tools/install_sdk.py"
 ```
 
 ```bash
-"$PYTHON" -m pip install -e "$LIBRARY/packages/agentcraft2-core" -e "$LIBRARY/packages/agentcraft2-cli"
+"$PYTHON" "$LIBRARY/tools/install_sdk.py"
 ```
 {% else %}
 Select your approved Python and install the CLI once. Configure pip
@@ -84,7 +84,8 @@ that prefix with `"$PYTHON"` to use the selected Python.
 "%PYTHON%" -m agentcraft2_cli check
 ```
 
-`install` uses this Python's pip to install the services and development tools.
+`install` uses this Python's pip to install this workspace's own services and
+development tools. It never installs the SDK; it stops and tells you how if the SDK is missing.
 Run it again after adding a service or changing dependencies. `check` runs lint,
 formatting, type checks, tests, and policy samples. To run only the tests:
 

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import re
+import sys
 import tomllib
+from collections.abc import Callable
 from pathlib import Path
 
 import click
@@ -13,21 +16,18 @@ from agentcraft2_cli.files import read_text
 from agentcraft2_cli.toolbox import Toolbox
 from agentcraft2_cli.workspace import AGENTS_FOLDER, SERVERS_FOLDER, load_answers
 
-__all__ = ["install", "installation_arguments"]
+__all__ = ["install", "installation_arguments", "missing_sdk_packages"]
 
 
 def installation_arguments(root: Path, *, dev: bool = True) -> tuple[str, ...]:
-    """Return pip arguments using local projects and their declared dependencies.
+    """Return pip arguments for the workspace's own services and its development tools.
 
-    All projects are resolved together, so pip checks their dependency constraints
-    and uses editable library checkouts without needing workspace-aware tooling.
+    All of them are resolved together, so pip checks their dependency constraints without
+    needing workspace-aware tooling. The SDK is not among them: it is installed by the SDK's
+    own installer, and only checked here (see :func:`missing_sdk_packages`).
     """
     answers = load_answers(root)
     arguments = ["install"]
-    if answers.library.kind == "path":
-        checkout = Path(answers.library.path or "")
-        for package in ("agentcraft2-core", "agentcraft2-aws", "agentcraft2-cli"):
-            arguments.extend(("--editable", str(checkout / "packages" / package)))
     if dev:
         pyproject = root / "pyproject.toml"
         try:
@@ -52,16 +52,71 @@ def installation_arguments(root: Path, *, dev: bool = True) -> tuple[str, ...]:
     return tuple(arguments)
 
 
+_SDK_PACKAGES = {"agentcraft2-core": "agentcraft2_core", "agentcraft2-aws": "agentcraft2_aws"}
+"""The SDK's packages a service can require, with the name each is imported by."""
+
+
+def missing_sdk_packages(root: Path, is_installed: Callable[[str], bool]) -> list[str]:
+    """Return the SDK packages the workspace's services require that this Python lacks.
+
+    Only a workspace that takes the SDK from a checkout is asked: a checkout is not on a
+    package index, so pip could not find what is missing, and the person must install the SDK.
+    A workspace that takes it from the index lets pip resolve it as it does any dependency.
+    """
+    answers = load_answers(root)
+    if answers.library.kind != "path":
+        return []
+    wanted: set[str] = set()
+    for folder, services in (
+        (AGENTS_FOLDER, answers.agents),
+        (SERVERS_FOLDER, answers.mcp_servers),
+    ):
+        for service in services:
+            pyproject = root / folder / service.name / "pyproject.toml"
+            try:
+                table = tomllib.loads(
+                    read_text(pyproject, what=f"the pyproject.toml of {service.name}")
+                )
+            except tomllib.TOMLDecodeError as problem:
+                raise CliError(
+                    f"the pyproject.toml of {service.name} ({pyproject}) is not valid TOML "
+                    f"({problem})",
+                    fix="repair the file, then run 'agentcraft2 install' again",
+                ) from problem
+            for requirement in table.get("project", {}).get("dependencies", []):
+                found = re.match(r"[A-Za-z0-9_.-]+", str(requirement))
+                name = found.group(0).lower().replace("_", "-") if found else ""
+                if name in _SDK_PACKAGES:
+                    wanted.add(name)
+    return sorted(name for name in wanted if not is_installed(_SDK_PACKAGES[name]))
+
+
 @click.command()
 @click.option("--no-dev", is_flag=True, help="Omit the workspace's development tools.")
 @workspace_option
 @pass_toolbox
 def install(tools: Toolbox, no_dev: bool, workspace: Path | None) -> None:
-    """Install every workspace service and its dependencies with Python's pip.
+    """Install the workspace's own agents and MCP servers, with Python's pip.
+
+    This installs what is yours: the agents and MCP servers of this workspace, with their
+    dependencies and the workspace's development tools (pytest, ruff, mypy). It never installs
+    the SDK; the SDK's installer does that, once, and this command stops with the fix if the
+    SDK is missing.
 
     Use the Python selected for this workspace. Run again after adding a service
     or changing its pyproject.toml. Pip uses that Python's configured package location.
     """
     root = workspace_root(workspace)
+    missing = missing_sdk_packages(root, tools.is_installed)
+    if missing:
+        raise CliError(
+            "the SDK is not installed in this Python",
+            expected=f"{', '.join(missing)} installed with the SDK, before the workspace",
+            actual="not installed in " + sys.executable,
+            fix=(
+                "install the SDK first: python tools/install_sdk.py, in your checkout of the SDK. "
+                "'ac2 install' installs only this workspace's own services"
+            ),
+        )
     if tools.run_tool("pip", installation_arguments(root, dev=not no_dev), root) != 0:
         raise CliError("pip could not install the workspace", fix="read pip's output above")

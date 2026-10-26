@@ -68,7 +68,7 @@ def test_install_uses_one_pip_resolution_for_local_projects(workspace: Path) -> 
     module, arguments, folder = recorded[-1]
     assert (module, arguments[0], folder) == ("pip", "install", workspace)
     assert str(workspace / "agents/helper") in arguments
-    assert sum(item == "--editable" for item in arguments) == 4
+    assert sum(item == "--editable" for item in arguments) == 1
     assert any(item.startswith("pytest") for item in arguments)
     assert not any(
         item.startswith("pytest") for item in installation_arguments(workspace, dev=False)

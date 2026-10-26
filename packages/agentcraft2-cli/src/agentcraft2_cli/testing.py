@@ -45,7 +45,7 @@ def toolbox_for_tests(*, pins: Mapping[str, str] | None = None, **tools: Any) ->
             started and asked, as the command does.
         **tools: Any other tool to replace, by its name in ``Toolbox``.
     """
-    chosen: dict[str, Any] = {"format_python": as_written}
+    chosen: dict[str, Any] = {"format_python": as_written, "is_installed": lambda _: True}
     if pins is not None:
         chosen["read_pins"] = fixed_pins(pins)
     return Toolbox(**{**chosen, **tools})
