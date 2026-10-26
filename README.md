@@ -261,7 +261,9 @@ environment, looks for an SDK that is already installed, builds the packages, un
 old SDK and only then installs the new one, printing each step as it goes and stopping at the
 first problem. With `--dev --editable` it installs the local packages, optional dependencies
 and development tools. Without options it builds wheels and installs them, as a consumer
-would get them (`--no-index --find-links=...` and other pip options are passed to pip). Then run these checks from
+would get them (`--no-index --find-links=...` and other pip options are passed to pip). When it finishes it
+says whether the `ac2` command is on your PATH; if it is not (a base Python's scripts folder often is not), it
+names the folder and the `python -m agentcraft2_cli` form that works without it. Then run these checks from
 the library root, replacing `"%PYTHON%"` with `"$PYTHON"` on macOS/Linux:
 
 ```bat

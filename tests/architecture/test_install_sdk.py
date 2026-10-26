@@ -5,11 +5,13 @@ from __future__ import annotations
 import argparse
 import importlib.metadata
 import json
+import os
 import re
+import shutil
 import subprocess
 import sys
 from collections.abc import Callable
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from types import SimpleNamespace
 from typing import Any
 
@@ -46,6 +48,7 @@ def calls(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     monkeypatch.setattr(install_sdk, "uninstall", record("uninstall"))
     monkeypatch.setattr(install_sdk, "install", record("install"))
     monkeypatch.setattr(install_sdk, "verify", record("verify", ["agentcraft2-core 0.1.0"]))
+    monkeypatch.setattr(install_sdk, "command_note", record("note", ["Check it with: ac2"]))
     return made
 
 
@@ -53,7 +56,7 @@ def test_the_steps_run_in_order_and_each_is_marked_complete(
     calls: list[str], capsys: pytest.CaptureFixture[str]
 ) -> None:
     assert install_sdk.main([]) == 0
-    assert calls == ["check", "find", "build", "uninstall", "install", "verify"]
+    assert calls == ["check", "find", "build", "uninstall", "install", "verify", "note"]
     lines = capsys.readouterr().out.splitlines()
     began = [line for line in lines if re.fullmatch(r"\[\d/6\] [^:]+", line)]
     done = [line for line in lines if line.endswith(": complete")]
@@ -295,3 +298,104 @@ def test_the_script_knows_nothing_about_the_examples_or_the_other_tools() -> Non
 def test_the_packages_it_installs_all_exist() -> None:
     for package in install_sdk.PACKAGES:
         assert (ROOT / "packages" / package / "pyproject.toml").is_file()
+
+
+# ------------------------------------------------------------------- how to run ac2 afterwards
+
+
+@pytest.fixture
+def scripts(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    """A scripts folder holding ac2, as the installed distribution's file list names it."""
+    folder = tmp_path / "Scripts"
+    folder.mkdir()
+    (folder / "ac2.exe").write_bytes(b"")
+    installed = SimpleNamespace(
+        files=[PurePosixPath("agentcraft2_cli/__init__.py"), PurePosixPath("ac2.exe")],
+        locate_file=lambda entry: folder / entry,
+    )
+    monkeypatch.setattr(importlib.metadata, "distribution", lambda _: installed)
+    monkeypatch.setattr(install_sdk, "python_command", lambda: "python")
+    monkeypatch.setattr(shutil, "which", lambda _: None)
+    return folder
+
+
+def test_ac2_on_path_is_checked_by_its_own_name(
+    monkeypatch: pytest.MonkeyPatch, scripts: Path
+) -> None:
+    monkeypatch.setenv("PATH", str(scripts))
+    monkeypatch.setattr(shutil, "which", lambda _: str(scripts / "ac2.exe"))
+    assert install_sdk.command_note() == [
+        "Check it with: ac2 --version (or python -m agentcraft2_cli --version)"
+    ]
+
+
+def test_ac2_off_path_names_the_folder_and_the_command_that_works(
+    monkeypatch: pytest.MonkeyPatch, scripts: Path, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("PATH", str(tmp_path / "elsewhere"))
+    lines = install_sdk.command_note()
+    assert str(scripts) in lines[0]
+    assert "not on your PATH" in lines[0]
+    assert "python -m agentcraft2_cli" in lines[1]
+    assert lines[2] == "Check it with: python -m agentcraft2_cli --version"
+
+
+def test_an_older_ac2_that_comes_first_is_named(
+    monkeypatch: pytest.MonkeyPatch, scripts: Path, tmp_path: Path
+) -> None:
+    older = tmp_path / "old" / "ac2.exe"
+    monkeypatch.setenv("PATH", os.pathsep.join([str(older.parent), str(scripts)]))
+    monkeypatch.setattr(shutil, "which", lambda _: str(older))
+    lines = install_sdk.command_note()
+    assert str(older) in lines[0]
+    assert str(scripts) in lines[0]
+    assert "python -m agentcraft2_cli" in lines[1]
+
+
+def test_a_distribution_without_the_command_gets_the_module_form(
+    monkeypatch: pytest.MonkeyPatch, scripts: Path
+) -> None:
+    del scripts
+    installed = SimpleNamespace(files=None, locate_file=lambda entry: Path(entry))
+    monkeypatch.setattr(importlib.metadata, "distribution", lambda _: installed)
+    assert install_sdk.command_note() == ["Check it with: python -m agentcraft2_cli --version"]
+
+
+def test_a_missing_distribution_gets_the_module_form(monkeypatch: pytest.MonkeyPatch) -> None:
+    def missing(_: str) -> Any:
+        raise importlib.metadata.PackageNotFoundError
+
+    monkeypatch.setattr(importlib.metadata, "distribution", missing)
+    monkeypatch.setattr(install_sdk, "python_command", lambda: "python")
+    assert install_sdk.command_note() == ["Check it with: python -m agentcraft2_cli --version"]
+
+
+def test_python_is_called_python_only_when_that_is_this_python(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(shutil, "which", lambda _: sys.executable)
+    assert install_sdk.python_command() == "python"
+    monkeypatch.setattr(shutil, "which", lambda _: None)
+    assert install_sdk.python_command() == f'"{sys.executable}"'
+
+
+def test_the_note_is_printed_after_the_install_is_reported(
+    calls: list[str], capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert install_sdk.main([]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[-2:] == ["The SDK is installed.", "Check it with: ac2"]
+
+
+def test_the_folder_is_named_without_dots_in_it(
+    monkeypatch: pytest.MonkeyPatch, scripts: Path, tmp_path: Path
+) -> None:
+    del scripts
+    installed = SimpleNamespace(
+        files=[PurePosixPath("../../Scripts/ac2.exe")],
+        locate_file=lambda entry: tmp_path / "Lib" / "site-packages" / entry,
+    )
+    monkeypatch.setattr(importlib.metadata, "distribution", lambda _: installed)
+    monkeypatch.setenv("PATH", str(tmp_path / "elsewhere"))
+    assert str(tmp_path / "Scripts") in install_sdk.command_note()[0]
+    assert ".." not in install_sdk.command_note()[0]
