@@ -183,6 +183,23 @@ def _record_usage(call: ModelCall, reply: AIMessage) -> None:
             call.evidence.add(**{key: total})
 
 
+def _with_attempts(call: ModelCall, reply: AIMessage) -> AIMessage:
+    """Tell the caller how many provider attempts the answer took.
+
+    The resilience stage retries a transient failure inside one governed call, so the caller
+    sees a single answer. Anything that budgets model calls, such as an agent's own ledger,
+    would otherwise count one call however many were made. The count is added to the reply's
+    ``response_metadata`` under ``agentcraft2_attempts`` without touching what the provider
+    reported.
+    """
+    attempts = call.evidence.facts().get("attempts")
+    if not isinstance(attempts, int) or isinstance(attempts, bool):
+        return reply
+    return reply.model_copy(
+        update={"response_metadata": {**reply.response_metadata, "agentcraft2_attempts": attempts}}
+    )
+
+
 class GovernedChatModel(BaseChatModel):
     """A chat model that sends every call through the model pipeline.
 
@@ -553,6 +570,7 @@ class GovernedChatModel(BaseChatModel):
             await self._decision(call, invocation, passed=False, reason="pipeline_failed")
             raise
         await self._decision(call, invocation, passed=True, reason="pipeline_passed")
+        reply = _with_attempts(call, reply)
         live = live_run(call.context)
         if live is not None and invocation.buffered_live_call is not None:
             await publish_reply(live, invocation.buffered_live_call, reply.content)

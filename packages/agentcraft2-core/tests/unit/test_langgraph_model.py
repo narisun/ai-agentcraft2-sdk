@@ -234,3 +234,30 @@ async def test_aliases_select_their_own_model() -> None:
         with bind_request_context(CONTEXT):
             await judge.ainvoke(QUESTION)
     assert fakes.audit.records[0].attributes["model_alias"] == "judge"
+
+
+async def test_the_reply_says_how_many_attempts_the_provider_took() -> None:
+    errors = [_VendorError("429"), _VendorError("429"), "the answer"]
+    fakes = Fakes(model=_ThrottlingProvider(errors))
+    async with fakes.container() as services:
+        with bind_request_context(CONTEXT):
+            reply = await services.model().ainvoke(QUESTION)
+    # The pipeline retries inside one call, so the caller learns of it only from the reply.
+    assert reply.response_metadata["agentcraft2_attempts"] == 3
+
+
+async def test_a_call_that_needs_no_retry_reports_one_attempt() -> None:
+    fakes = Fakes(model=FakeChatModelProvider(["the answer"]))
+    async with fakes.container() as services:
+        with bind_request_context(CONTEXT):
+            reply = await services.model().ainvoke(QUESTION)
+    assert reply.response_metadata["agentcraft2_attempts"] == 1
+
+
+async def test_the_attempt_count_sits_beside_what_the_provider_reported() -> None:
+    answer = AIMessage("the answer", response_metadata={"stop_reason": "end_turn"})
+    fakes = Fakes(model=FakeChatModelProvider([answer]))
+    async with fakes.container() as services:
+        with bind_request_context(CONTEXT):
+            reply = await services.model().ainvoke(QUESTION)
+    assert reply.response_metadata == {"stop_reason": "end_turn", "agentcraft2_attempts": 1}
