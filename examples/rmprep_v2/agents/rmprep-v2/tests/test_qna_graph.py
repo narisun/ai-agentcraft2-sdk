@@ -10,7 +10,7 @@ from typing import Any
 import pytest
 from agentcraft2_core import PolicyDenied
 from agentcraft2_core.testing import calls_tool
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.errors import NodeError, NodeTimeoutError
 
 from rmprep_v2.evals.harness import (
@@ -368,3 +368,125 @@ def test_a_failure_the_graph_can_explain_becomes_a_limitation(
     assert isinstance(update, dict)
     assert update["outcome"] == reason
     assert update["context_diagnostics"] == {"error": type(error).__name__}
+
+
+# --- citations are judged against what the model was shown -----------------------------------------
+
+WC_MAR = "working_capital[uen=JONE-0022;period_end=2026-03-31]"
+WC_JUN = "working_capital[uen=JONE-0022;period_end=2026-06-30]"
+CCC = "cash_conversion_cycle_days"
+WORKING_CAPITAL = calls_tool("get_memo_section", section="working_capital")
+
+
+def revisions_asked(run: Run) -> list[str]:
+    """The repair instructions the model was sent, in order."""
+    return [
+        str(m.content)
+        for request in run.prompts
+        for m in request
+        if isinstance(m, HumanMessage) and str(m.content).startswith("Revise the draft")
+    ]
+
+
+async def test_a_search_hit_cannot_be_cited_and_the_repair_says_why(
+    tmp_path: Path, store: SqliteEvidenceStore
+) -> None:
+    run = await ask(tmp_path, store, SEARCH, GOOD, SECTION, GOOD)
+    assert last(run) == GOOD
+    (asked,) = {r for r in revisions_asked(run)}
+    assert "only seen in search results" in asked
+    assert COVENANT_REF in asked
+    assert run.diagnostics["ledger"]["revisions"] == 1
+
+
+async def test_a_record_only_the_memo_cites_cannot_be_cited_until_it_is_read(
+    tmp_path: Path, store: SqliteEvidenceStore
+) -> None:
+    cites_memo = "The memo's credit record supports it. Source: credit_metrics[uen=JONE-0022]."
+    run = await ask(tmp_path, store, cites_memo, "The memo flags covenant pressure.")
+    assert any("cited in the memo text" in r for r in revisions_asked(run))
+    assert last(run) == "The memo flags covenant pressure."
+
+
+async def test_a_derived_figure_with_a_receipt_is_released_clean_and_citable(
+    tmp_path: Path, store: SqliteEvidenceStore
+) -> None:
+    from rmprep_v2.receipts import receipt_id
+
+    ask_for = calls_tool(
+        "calculate",
+        operation="difference",
+        operands=[{"source_ref": WC_MAR, "field": CCC}, {"source_ref": WC_JUN, "field": CCC}],
+    )
+    rid = receipt_id("difference", [(WC_MAR, CCC, "87"), (WC_JUN, CCC, "106")], 2)
+    answer = f"The cash conversion cycle rose by 19 days. Source: calculation[{rid}]."
+    run = await ask(tmp_path, store, WORKING_CAPITAL, ask_for, answer)
+    assert last(run) == answer, "a figure with a receipt carries no warning"
+    reply = run.messages[-1]
+    assert isinstance(reply, AIMessage)
+    assert reply.additional_kwargs["rmprep_warnings"] == []
+    cited = reply.additional_kwargs["rmprep_citations"]
+    assert [(c["ref"], c["status"], c["kind"]) for c in cited] == [
+        (f"calculation[{rid}]", "valid", "calculation")
+    ]
+
+
+async def test_a_figure_no_record_supports_is_a_visible_warning_not_a_block(
+    tmp_path: Path, store: SqliteEvidenceStore
+) -> None:
+    answer = f"The cycle rose by 19 days, from 87 to 106. Source: {WC_JUN}."
+    run = await ask(tmp_path, store, WORKING_CAPITAL, answer)
+    text = last(run)
+    assert text.startswith(answer), "the model's own words are released unchanged"
+    assert "Check before use" in text and "19" in text.split("Check before use")[1]
+    reply = run.messages[-1]
+    assert isinstance(reply, AIMessage)
+    assert [w["figure"] for w in reply.additional_kwargs["rmprep_warnings"]] == ["19"]
+    assert run.diagnostics["ledger"]["revisions"] == 0, "a warning does not ask the model to revise"
+    assert run.diagnostics["warnings"] == 1
+
+
+async def test_the_warning_is_part_of_the_saved_answer_so_copy_and_reload_keep_it(
+    tmp_path: Path, store: SqliteEvidenceStore
+) -> None:
+    run = await ask(tmp_path, store, WORKING_CAPITAL, f"Up by 19 days. Source: {WC_JUN}.")
+    saved = run.messages[-1]
+    assert isinstance(saved, AIMessage)
+    assert "Check before use" in str(saved.content)
+    assert saved.additional_kwargs["rmprep_warnings"]
+    assert checkpoint_contains(run.database, "Check before use") > 0
+
+
+async def test_released_citations_say_which_memo_version_they_came_from(
+    tmp_path: Path, store: SqliteEvidenceStore
+) -> None:
+    run = await ask(tmp_path, store, SECTION, GOOD)
+    reply = run.messages[-1]
+    assert isinstance(reply, AIMessage)
+    (cited,) = reply.additional_kwargs["rmprep_citations"]
+    assert cited["ref"] == COVENANT_REF
+    assert cited["memo_id"] == run.memos[0]["memo_id"]
+    assert cited["card_id"].startswith("c-")
+    assert cited["kind"] == "record"
+
+
+async def test_a_missing_visibility_record_fails_closed(tmp_path: Path) -> None:
+    class Forgetful(SqliteEvidenceStore):
+        async def get_visibility(self, scope: str, key: str) -> Any:
+            return None
+
+    async with Forgetful(tmp_path / "evidence.sqlite") as forgetful:
+        run = await ask(tmp_path, forgetful, SECTION, GOOD)
+    assert run.diagnostics["limitation"] == "unverifiable"
+    assert COVENANT_REF not in last(run)
+
+
+async def test_the_visibility_record_keeps_every_kind_of_reference(
+    tmp_path: Path, store: SqliteEvidenceStore
+) -> None:
+    run = await ask(tmp_path, store, SEARCH, SECTION, GOOD)
+    scope = await scope_of(tmp_path, run.thread)
+    record = await store.get_visibility(scope, run.diagnostics["visibility_id"])
+    assert record is not None
+    assert COVENANT_REF in record["basis"]["visible"]
+    assert COVENANT_REF not in record["basis"]["discovery"], "a record that was read is not a lead"

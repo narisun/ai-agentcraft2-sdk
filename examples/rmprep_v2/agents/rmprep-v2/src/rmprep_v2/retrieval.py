@@ -14,20 +14,24 @@ from typing import Annotated, Any
 
 from langchain_core.tools import BaseTool, tool
 from langgraph.prebuilt import InjectedState
+from pydantic import BaseModel
 
-from rmprep_v2.cards import json_tokens
+from rmprep_v2.cards import card_id, json_tokens
 from rmprep_v2.evidence_store import EvidenceStore
 from rmprep_v2.offload import evidence_scope
+from rmprep_v2.receipts import Refusal, compute
 from rmprep_v2.tool_names import EVIDENCE_TOOL_NAMES, RETRIEVAL_TOOL_NAMES
 
 __all__ = [
     "EVIDENCE_TOOL_NAMES",
     "MAX_IDS",
     "RETRIEVAL_TOOL_NAMES",
+    "calculate",
     "get_analysis_note",
     "get_evidence",
     "get_memo_section",
     "memo_directory",
+    "open_source",
     "retrieval_tools",
     "search_evidence",
     "selected_memos",
@@ -274,6 +278,67 @@ async def get_analysis_note(
     return {"status": "ok", "note": shown}
 
 
+async def calculate(
+    store: EvidenceStore,
+    scope: str,
+    memos: Sequence[Memo],
+    operation: str,
+    operands: Sequence[Mapping[str, Any]],
+    *,
+    places: int = 2,
+) -> dict[str, Any]:
+    """Do arithmetic on records of the selected memo and return a receipt that shows every input."""
+    if (unusable := _unusable(memos)) is not None:
+        return unusable
+    sources = _source_ids(memos)
+    owner = _memo_of(memos)
+    refs = list(dict.fromkeys(str(o.get("source_ref", "")) for o in operands))
+    wanted = [card_id(source, ref) for source in sources for ref in refs]
+    found = await store.get_cards(scope, sources, wanted)
+    by_ref: dict[str, list[dict[str, Any]]] = {}
+    for card in found:
+        by_ref.setdefault(card["source_ref"], []).append(card)
+    chosen: list[dict[str, Any]] = []
+    for operand in operands:
+        ref = str(operand.get("source_ref", ""))
+        candidates = [
+            card
+            for card in by_ref.get(ref, [])
+            if not operand.get("memo_id")
+            or owner[card["source_id"]]["memo_id"] == operand["memo_id"]
+        ]
+        if not candidates:
+            return {
+                "status": "operand_not_found",
+                "detail": f"{ref} is not a record of the selected memo",
+            }
+        if len(candidates) > 1:
+            return {
+                "status": "ambiguous_operand",
+                "detail": f"{ref} is in several selected memos; name the memo_id",
+                "memos": [owner[card["source_id"]]["memo_id"] for card in candidates],
+            }
+        chosen.append(candidates[0])
+    try:
+        receipt = compute(
+            operation, chosen, [str(o.get("field", "")) for o in operands], places=places
+        )
+    except Refusal as refusal:
+        return {"status": refusal.status, "detail": refusal.detail}
+    for entry, card in zip(receipt["operands"], chosen, strict=True):
+        entry["memo_id"] = owner[card["source_id"]]["memo_id"]
+    receipt["ref"] = f"calculation[{receipt['receipt_id']}]"
+    return {"status": "ok", "receipt": receipt}
+
+
+class Operand(BaseModel):
+    """One input of a calculation: a record of the memo and the field to read from it."""
+
+    source_ref: str
+    field: str
+    memo_id: str = ""
+
+
 def retrieval_tools(store: EvidenceStore) -> list[BaseTool]:
     """The four tools, bound to a store. The scope and the memo selection are not arguments."""
 
@@ -335,7 +400,31 @@ def retrieval_tools(store: EvidenceStore) -> list[BaseTool]:
         """
         return await get_analysis_note(store, evidence_scope(), selected_memos(state), note_id)
 
-    return [search_tool, evidence_tool, section_tool, note_tool]
+    @tool("calculate")
+    async def calculate_tool(
+        operation: str,
+        operands: list[Operand],
+        state: Annotated[dict[str, Any], InjectedState],
+        places: int = 2,
+    ) -> dict[str, Any]:
+        """Calculate a figure the records do not state, and get a receipt you can cite.
+
+        operation is difference (b - a), percent_change ((b - a) / a * 100), ratio (a / b)
+        or sum. Name each operand by the source_ref of a record you have read and the field
+        to use. The arithmetic is exact and rounded half-up to places (0 to 6). The receipt
+        shows every input; cite it as its ref. Records in different currencies, or of
+        different metrics, are refused. Never state a derived figure without a receipt.
+        """
+        return await calculate(
+            store,
+            evidence_scope(),
+            selected_memos(state),
+            operation,
+            [o.model_dump() for o in operands],
+            places=places,
+        )
+
+    return [search_tool, evidence_tool, section_tool, note_tool, calculate_tool]
 
 
 async def memo_directory(
@@ -381,3 +470,26 @@ async def memo_directory(
         omitted += 1
         shown["notes_omitted"] = omitted
     return shown
+
+
+async def open_source(
+    store: EvidenceStore, scope: str, memos: Sequence[Memo], identifier: str
+) -> dict[str, Any] | None:
+    """Show one cited record as the memo version it came from saw it, for inspection later.
+
+    Unlike the tools, this is not confined to the selected memo: a link in an older answer
+    opens that answer's own record, which never changes, not the latest version's. It stays
+    inside the thread, and an unknown ID or another thread's returns nothing.
+    """
+    sources = _source_ids(memos)
+    found = await store.get_cards(scope, sources, [identifier])
+    if not found:
+        return None
+    card = found[0]
+    memo = _memo_of(memos)[card["source_id"]]
+    return {
+        "memo_id": memo["memo_id"],
+        "version": memo.get("version"),
+        "meeting_date": memo.get("meeting_date"),
+        "card": _record(card, memo),
+    }

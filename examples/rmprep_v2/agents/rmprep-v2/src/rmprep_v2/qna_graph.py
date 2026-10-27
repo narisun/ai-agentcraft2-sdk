@@ -21,7 +21,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime
 from typing import Annotated, Any, NotRequired, cast
 
@@ -45,12 +45,14 @@ from langgraph.prebuilt import ToolNode
 from langgraph.types import Command, RetryPolicy
 
 from rmprep_v2.cards import card_id
+from rmprep_v2.citations import CitationBasis, citation_issues, other_version_refs, resolve
 from rmprep_v2.clients import client_names, recent_client_lookup, resolved_clients
 from rmprep_v2.context import estimate_tokens
 from rmprep_v2.context_tools import tool_context_issues
 from rmprep_v2.evidence_store import EvidenceStore
 from rmprep_v2.focus import conversation_focus
 from rmprep_v2.memos import turns
+from rmprep_v2.numeric_checks import numeric_warnings, warning_footer
 from rmprep_v2.offload import evidence_scope, hydrate_messages, offloading, stable_id
 from rmprep_v2.qna_context import assemble
 from rmprep_v2.qna_ledger import (
@@ -119,6 +121,10 @@ _LIMITATIONS = {
     "model_failed": (
         "The model service did not answer this question. Nothing was saved from the attempt; "
         "please try again."
+    ),
+    "unverifiable": (
+        "I could not check this answer against the evidence it was given, so I am not giving "
+        "one. Please try again."
     ),
     "tool_failed": (
         "An evidence lookup failed while I was answering. Nothing was saved from the attempt; "
@@ -355,6 +361,7 @@ def build_qna_graph(
                 "model_call": ledger["model_calls"],
                 "memo_ids": selection["memo_ids"],
                 "visible_refs": context.visible_refs,
+                "basis": context.basis.to_record(),
                 "evicted_tool_message_ids": context.diagnostics["evicted_tool_message_ids"],
                 "planned_input_tokens": planned,
             },
@@ -365,6 +372,8 @@ def build_qna_graph(
             "selection": selection,
             "diagnostics": {**context.diagnostics, "visibility_id": visibility_id},
             "limit": words,
+            "needs_citation": context.needs_citation,
+            "memo_texts": [str(memo["content"]) for memo in memos],
             "fresh_data": any(
                 tool_payload(m) and m.name not in EVIDENCE_TOOL_NAMES
                 for m in current
@@ -383,7 +392,26 @@ def build_qna_graph(
             return Command(goto="generate")
         reply: AIMessage = attempt["reply"]
         selection = attempt["selection"]
-        issues = response_issues(reply, attempt["messages"][1:], attempt["limit"])
+        # What the answer may cite is what the final model call was shown, as recorded then.
+        issues = response_issues(reply, attempt["messages"][1:], attempt["limit"], citations=False)
+        released: list[dict[str, str]] = []
+        if not reply.tool_calls:
+            scope = evidence_scope()
+            record = await evidence.get_visibility(scope, attempt["diagnostics"]["visibility_id"])
+            if record is None:
+                return stop("unverifiable", ledger)
+            basis = CitationBasis.from_record(record["basis"])
+            text = text_content(reply)
+            findings = resolve(text, basis)
+            unknown = {f.ref for f in findings if f.status == "unknown"}
+            if unknown and (
+                other := await other_version_refs(
+                    evidence, scope, state.get("memos", []), selection["memo_ids"], unknown
+                )
+            ):
+                findings = resolve(text, basis.with_other_versions(other))
+            issues += citation_issues(findings, needs_citation=attempt["needs_citation"])
+            released = [{"ref": f.ref, "status": f.status} for f in findings if f.status == "valid"]
         issues += tool_context_issues(
             reply, selection, state.get("memos", []), now().date().isoformat()
         )
@@ -403,7 +431,10 @@ def build_qna_graph(
                 goto="generate",
             )
         if not reply.tool_calls:
-            return Command(update={"issues": []}, goto="commit")
+            return Command(
+                update={"issues": [], "attempt": {**attempt, "released": released}},
+                goto="commit",
+            )
         if reason := tool_gate(ledger, limits, requested=len(reply.tool_calls)):
             return stop(reason, ledger)
         ledger = note_tool_calls(
@@ -415,10 +446,26 @@ def build_qna_graph(
         attempt = state["attempt"]
         reply: AIMessage = attempt["reply"]
         messages = await hydrate_messages(state["messages"], evidence, evidence_scope())
+        text = text_content(reply)
+        # Unsupported figures are caveats, not blocks: they travel with the text, so copying or
+        # exporting the answer keeps them, and they are recorded beside it for a reader to inspect.
+        warnings = numeric_warnings(text, attempt["messages"][1:], memo_texts=attempt["memo_texts"])
+        sources = await _sources(attempt["released"], state, attempt["selection"])
+        reply = reply.model_copy(
+            update={
+                "content": text + warning_footer(warnings) if warnings else reply.content,
+                "additional_kwargs": {
+                    **reply.additional_kwargs,
+                    "rmprep_warnings": warnings,
+                    "rmprep_citations": sources,
+                },
+            }
+        )
         diagnostics = {
             **attempt["diagnostics"],
             "ledger": state["ledger"],
             "review_advisories": response_advisories(reply, attempt["messages"][1:]),
+            "warnings": len(warnings),
         }
         return _accepted_update(
             cast(State, {**state, "messages": messages}),
@@ -427,6 +474,27 @@ def build_qna_graph(
             attempt["selection"],
             diagnostics,
         )
+
+    async def _sources(
+        released: Sequence[Mapping[str, str]], state: QnAState, selection: Mapping[str, Any]
+    ) -> list[dict[str, Any]]:
+        """For each citation released, which memo version and card it points at, for inspection."""
+        memos = [m for m in state.get("memos", []) if m["memo_id"] in selection["memo_ids"]]
+        owner = {s: m["memo_id"] for m in memos for s in m.get("source_ids", [])}
+        refs = [r["ref"] for r in released if not r["ref"].startswith("calculation[")]
+        wanted = {card_id(source, ref): (source, ref) for source in owner for ref in refs}
+        found = await evidence.get_cards(evidence_scope(), list(owner), list(wanted))
+        cards = {wanted[c["card_id"]][1]: c for c in found if c["card_id"] in wanted}
+        return [
+            {
+                "ref": r["ref"],
+                "status": r["status"],
+                "kind": "calculation" if r["ref"].startswith("calculation[") else "record",
+                "memo_id": owner[cards[r["ref"]]["source_id"]] if r["ref"] in cards else None,
+                "card_id": cards[r["ref"]]["card_id"] if r["ref"] in cards else None,
+            }
+            for r in released
+        ]
 
     async def limitation(state: QnAState) -> dict[str, Any]:
         reason = state.get("outcome") or "unknown"

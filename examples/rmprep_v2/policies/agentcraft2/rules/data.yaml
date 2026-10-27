@@ -61,4 +61,4 @@ rules:
   - id: rmprep-v2-reads-its-stored-evidence
     actions: [tool.call]
     applications: [rmprep-v2]
-    resources: [search_evidence, get_evidence, get_memo_section, get_analysis_note]
+    resources: [search_evidence, get_evidence, get_memo_section, get_analysis_note, calculate]

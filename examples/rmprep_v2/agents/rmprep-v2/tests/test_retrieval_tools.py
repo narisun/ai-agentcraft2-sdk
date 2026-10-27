@@ -338,12 +338,13 @@ def test_a_section_call_naming_an_unselected_memo_is_refused_before_it_runs() ->
     assert any("selected memo" in issue for issue in issues)
 
 
-def test_the_tool_names_are_the_four_retrieval_tools() -> None:
+def test_the_tool_names_are_the_retrieval_tools() -> None:
     assert RETRIEVAL_TOOL_NAMES == (
         "search_evidence",
         "get_evidence",
         "get_memo_section",
         "get_analysis_note",
+        "calculate",
     )
 
 
@@ -446,6 +447,7 @@ def test_a_model_is_shown_no_scope_state_or_date_arguments() -> None:
         "get_evidence": {"card_ids"},
         "get_memo_section": {"section", "memo_id", "offset"},
         "get_analysis_note": {"note_id"},
+        "calculate": {"operation", "operands", "places"},
     }
 
 
@@ -492,3 +494,35 @@ async def test_the_directory_drops_notes_to_fit_its_cap(store: SqliteEvidenceSto
     assert shown is not None
     assert shown["notes"] == []
     assert shown["notes_omitted"] == 1
+
+
+# --- opening a citation later -------------------------------------------------------------------------
+
+
+async def test_a_citation_opens_the_record_as_that_memo_version_saw_it(
+    store: SqliteEvidenceStore,
+) -> None:
+    from rmprep_v2.retrieval import open_source
+
+    old_card = next(c for c in cards_of("src-b", "2026-07-03", 1.31)[0] if c["source_ref"] == DSCR)
+    new_card = next(c for c in cards_of("src-a", "2026-08-03", 1.08)[0] if c["source_ref"] == DSCR)
+    memos = [A, B]
+    # The newer memo is the selected one now; an older answer's link still shows the older value.
+    opened = await open_source(store, SCOPE, memos, old_card["card_id"])
+    assert opened is not None
+    assert opened["memo_id"] == B["memo_id"]
+    assert opened["meeting_date"] == "2026-07-03"
+    assert opened["card"]["fields"]["current_value"] == 1.31
+    latest = await open_source(store, SCOPE, memos, new_card["card_id"])
+    assert latest is not None and latest["card"]["fields"]["current_value"] == 1.08
+
+
+async def test_a_citation_does_not_open_across_threads_or_for_unknown_ids(
+    store: SqliteEvidenceStore,
+) -> None:
+    from rmprep_v2.retrieval import open_source
+
+    card = cards_of("src-a")[0][0]
+    assert await open_source(store, OTHER, [A, B], card["card_id"]) is None
+    assert await open_source(store, SCOPE, [A, B], "c-unknown") is None
+    assert await open_source(store, SCOPE, [], card["card_id"]) is None

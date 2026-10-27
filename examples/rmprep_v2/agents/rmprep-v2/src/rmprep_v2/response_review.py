@@ -160,6 +160,16 @@ def _page_references(payload: dict[str, Any]) -> set[str]:
         for card in payload.get("cards", [])
         if isinstance(card, dict) and isinstance(card.get("source_ref"), str)
     )
+    # A calculation shows every operand, so it makes its own reference and theirs citable.
+    receipt = payload.get("receipt")
+    if isinstance(receipt, dict):
+        found.update(
+            str(item["source_ref"])
+            for item in [receipt, *receipt.get("operands", [])]
+            if isinstance(item, dict) and isinstance(item.get("source_ref"), str)
+        )
+        if isinstance(receipt.get("ref"), str):
+            found.add(receipt["ref"])
     return found
 
 
@@ -280,8 +290,14 @@ def evidence_references(messages: Sequence[AnyMessage]) -> tuple[set[str], bool]
     return references, bool(fresh)
 
 
-def response_issues(reply: AIMessage, messages: Sequence[AnyMessage], limit: int) -> list[str]:
-    """Return repairable errors; tool requests continue through the normal graph."""
+def response_issues(
+    reply: AIMessage, messages: Sequence[AnyMessage], limit: int, *, citations: bool = True
+) -> list[str]:
+    """Return repairable errors; tool requests continue through the normal graph.
+
+    ``citations=False`` leaves the existence of each cited record to the caller. The Q&A graph
+    judges it against the record of what the model was shown (``rmprep_v2.citations``).
+    """
     if reply.tool_calls:
         return []
     text = text_content(reply)
@@ -293,14 +309,14 @@ def response_issues(reply: AIMessage, messages: Sequence[AnyMessage], limit: int
         issues.append(f"The answer has {count} words; the maximum is {limit}, including citations.")
     references, needs_citation = evidence_references(messages)
     cited = set(_REFERENCE.findall(text))
-    invalid = cited - references
+    invalid = (cited - references) if citations else set()
     if invalid:
         issues.append(
             "These citations do not exactly match returned source_ref values: "
             + ", ".join(sorted(invalid))
             + ". Copy the full source_ref; do not abbreviate keys, dates or table names."
         )
-    if needs_citation and not cited:
+    if citations and needs_citation and not cited:
         issues.append("Cite at least one full source_ref from the evidence just retrieved.")
     if references and _REFERENCE_PLACEHOLDER.search(text):
         issues.append(

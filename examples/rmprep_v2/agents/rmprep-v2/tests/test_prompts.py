@@ -18,7 +18,7 @@ def test_prompt_versions_are_explicit_package_resources(
     assert load_prompt("rmprep_v2", "common", 6) == COMMON
     assert "Markdown heading/list markers and divider-only lines do not count" in COMMON
     assert COMMON + load_prompt("memoagent", "system", 2) == MEMO_PROMPT
-    assert COMMON + load_prompt("qnaagent", "system", 4) == QNA_PROMPT
+    assert COMMON + load_prompt("qnaagent", "system", 5) == QNA_PROMPT
     assert "You are memoagent" in MEMO_PROMPT
     assert "You are qnaagent" in QNA_PROMPT
     with pytest.raises(FileNotFoundError):

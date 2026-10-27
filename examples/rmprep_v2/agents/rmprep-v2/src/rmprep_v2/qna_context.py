@@ -16,6 +16,7 @@ from typing import Any
 
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, SystemMessage, ToolMessage
 
+from rmprep_v2.citations import CitationBasis, basis_from_messages, refs_of
 from rmprep_v2.context import _relevant_evidence, _same_context, estimate_tokens
 from rmprep_v2.memos import MemoVersion, turns
 from rmprep_v2.response_review import evidence_references
@@ -31,6 +32,11 @@ _STUB = (
 )
 
 
+_NOTHING = CitationBasis(
+    frozenset(), frozenset(), frozenset(), frozenset(), frozenset(), frozenset()
+)
+
+
 @dataclass(frozen=True)
 class QnaContext:
     """One model request and the facts about how it was built."""
@@ -42,6 +48,10 @@ class QnaContext:
     """Estimated tokens of the messages plus the tool definitions."""
     problem: str | None
     """``question_too_large`` when the question alone exceeds its allowance."""
+    basis: CitationBasis = _NOTHING
+    """Which records the model could cite, and which weaker claims to a record exist."""
+    needs_citation: bool = False
+    """True when the model itself chose a lookup in this question, so its answer must cite."""
 
 
 def _find(messages: Sequence[AnyMessage], identity: str) -> AnyMessage | None:
@@ -114,7 +124,12 @@ def _last_batch(current: Sequence[AnyMessage]) -> set[str]:
 
 
 def _evict(
-    current: list[AnyMessage], cap: int, evicted: list[str], *, force: bool = False
+    current: list[AnyMessage],
+    cap: int,
+    evicted: list[str],
+    refs: set[str],
+    *,
+    force: bool = False,
 ) -> list[AnyMessage]:
     """Replace the oldest tool results of this question by stubs until they fit ``cap``.
 
@@ -131,6 +146,8 @@ def _evict(
             and str(message.id) not in protected
             and str(message.id) not in evicted
         ):
+            # Remember what the model could cite before the result left the request.
+            refs |= refs_of(message)[1]
             result[index] = _stub_of(message)
             evicted.append(str(message.id))
     return result
@@ -183,7 +200,8 @@ def assemble(
         retained.insert(0, group)
 
     evicted: list[str] = []
-    working = _evict(list(current), limits.working_evidence_tokens, evicted)
+    dropped_refs: set[str] = set()
+    working = _evict(list(current), limits.working_evidence_tokens, evicted, dropped_refs)
 
     def summary() -> str:
         dropped = eligible[: len(eligible) - len(retained)]
@@ -207,11 +225,14 @@ def assemble(
         retained = retained[1:]
         messages = compose(retained, working)
     if estimate_tokens(messages) + tool_tokens > limits.input_tokens:
-        working = _evict(working, 0, evicted, force=True)
+        working = _evict(working, 0, evicted, dropped_refs, force=True)
         messages = compose(retained, working)
 
     planned = estimate_tokens(messages) + tool_tokens
-    refs = sorted(evidence_references(messages[1:])[0])
+    basis = basis_from_messages(
+        messages[1:], memo_texts=[m["content"] for m in memos], evicted_refs=dropped_refs
+    )
+    refs = sorted(basis.visible)
     pinned_turns = sum(
         any(m.id in pinned_message_ids | other_pins for m in group) for group in prior
     )
@@ -237,4 +258,6 @@ def assemble(
             "evicted": len(evicted),
         },
     }
-    return QnaContext(messages, diagnostics, refs, planned, None)
+    return QnaContext(
+        messages, diagnostics, refs, planned, None, basis, evidence_references(messages[1:])[1]
+    )

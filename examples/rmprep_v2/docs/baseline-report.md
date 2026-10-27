@@ -381,3 +381,78 @@ A scratch graph confirmed what the plan needed before any code was written:
   words and reads ahead only what the memo cites.
 - Stubbing old tool results in history, the memo agent's move to the same nodes, and the answer
   validators' use of the visibility record (V4).
+
+## V4 results: citations, calculations and numeric warnings
+
+### What was built
+
+- [citations.py](../agents/rmprep-v2/src/rmprep_v2/citations.py): the resolver. An answer is judged
+  against the record of what the final model call was shown, which V3 writes to the evidence store
+  for each call; `validate` reads that record back, so the stored record, not a recomputation, is the
+  authority. If the record is missing the turn ends with an `unverifiable` limitation: it fails closed.
+  Each distinct reference an answer cites gets one finding:
+
+  | Status | Meaning | Repair instruction names |
+  | --- | --- | --- |
+  | `valid` | The record itself was read: a card, a section read, a data result, or a calculation and its operands | |
+  | `evicted` | Read earlier in the question, then dropped from the request to save space | read it again with `get_evidence` |
+  | `discovery_only` | Seen only as a search hit | read it with `get_evidence` |
+  | `note_only` | Named by an analysis note, which is an interpretation | read it with `get_evidence` |
+  | `memo_only` | Cited by the memo's own text but not read for this answer | read it with `get_evidence` |
+  | `other_version` | A record of a saved memo that is not selected for this question | cite the selected memo, or compare versions |
+  | `unknown` | Matches nothing read in this thread | copy a full `source_ref`; do not invent one |
+
+  Reading a record wins over every weaker claim to it. Each finding is blocking; a failed answer is
+  revised at most twice and then ends in the `validation_failed` limitation. The old citation check
+  stays for the memo agent; `response_issues(citations=False)` lets the Q&A graph use this one.
+- [receipts.py](../agents/rmprep-v2/src/rmprep_v2/receipts.py) and the `calculate` tool: `difference`,
+  `percent_change`, `ratio` and `sum`, in decimal arithmetic, never floating point. The model names
+  each operand by the `source_ref` of a record of the selected memo and a field. The receipt shows the
+  operation, the formula, every operand with its record, field, exact value and as-of date, the exact
+  result, the rounded result and the rule (`half-up`, 0 to 6 places). Its ID depends only on the inputs,
+  so the same calculation has the same receipt anywhere. Operands that cannot be compared are refused
+  with a reason instead of combined: a different currency, a different metric, a value that is null,
+  boolean or text, a missing field, a division by zero, a record outside the selected memo. A receipt
+  is citable as `calculation[calc-...]`, and so are its operands.
+- [numeric_checks.py](../agents/rmprep-v2/src/rmprep_v2/numeric_checks.py): figures an answer states
+  that no record shown, no receipt and no memo statement supports become warnings, at most five. A
+  rounded figure matches the value it rounds (to half a unit of its last digit), a percent matches a
+  fraction, and a threshold named in a field (the 90 of `ar_over_90_pct`) counts. Dates, identifiers,
+  references, ordinals, list numbers, years and counts of ten or fewer are not figures. A warning
+  never blocks and never asks the model to revise.
+- **Where a warning shows.** The commit step appends a "Check before use" line to the released answer,
+  written by code, not the model, after the checks, so it is not counted in the word limit. Because it
+  is part of the text, copying or exporting the answer keeps it. The same facts are in the answer's
+  metadata (`rmprep_warnings`), and the checkpoint holds both, so a reload shows them.
+- **Where a citation leads.** The answer's metadata lists each citation released (`rmprep_citations`):
+  its reference, kind (record or calculation), the memo version and the card it points at.
+  `open_source` opens a card as the memo version it came from saw it, inside the thread: an older
+  answer's link shows the older value, not the latest version's.
+- The Q&A prompt is version 5: a figure that is not stated must come from `calculate`, and a figure no
+  record supports is shown to the reader as unverified.
+
+### Measured
+
+| | V3 | V4 |
+| --- | --- | --- |
+| Q&A turn, model input | 7.8k to 17.9k | 7.9k to 18.1k |
+| Tool definitions the Q&A model carries | 0.7k | 1.05k (five tools) |
+| Checkpoint state after 13 turns | 28.9 KB | 32.3 KB |
+
+The extra 0.3k per call is prompt version 5; the state growth is the citation metadata of each answer.
+Behaviour is shown by tests rather than a rate: the workspace's 648 tests pass.
+
+### Not done in V4, and not measured
+
+- **The warning heuristic has no measured error rate.** There is no corpus of real model answers yet,
+  so its false positives (a supported figure flagged) and misses (an unsupported figure that happens to
+  equal an unrelated number in the evidence) are unknown. Its tolerance of half a unit of the last digit
+  is a choice, not a calibrated one.
+- A "proven arithmetic inconsistency" check, for an answer whose stated result differs from the
+  receipt it cites, is not built. Today such an answer is released with its citation valid.
+- A claim is not checked against its citation: a right record cited for the wrong metric, period or
+  currency passes. That is a semantic judgement for the evaluation corpus and a human reviewer.
+- Agent Lab is unchanged: it shows the answer text, so the caveat is visible, but it has no source
+  panel, activity log or warning styling for the new metadata.
+- The memo agent keeps the old checks, so a memo's citations are still judged against the messages.
+- Role masking of cards and an authorized-view version in the visibility record remain open (D-04).
