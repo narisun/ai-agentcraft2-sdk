@@ -333,6 +333,17 @@ and tool arguments are excluded. Only the final accepted answer is saved in chat
 history. Keep `live_updates=False` if application-specific checks must finish
 before any draft is shown.
 
+An agent can also send short **activity** lines while it works: "Searching the memo",
+"Reading a source". In a graph node, call `await report_activity(kind, label, detail)` from
+`agentcraft2_core.integrations.langgraph`. Each line is an `activity` event with a sequence
+number, a lowercase `kind` word, a label of at most 120 characters and an optional detail of at
+most 200. They are operational status, never model text, tool arguments or tool results; the
+agent writes them. An agent sends at most 64 per request and drops any a slow reader cannot take,
+so activity never delays an answer. The UI shows them in an expandable "Activity" step while the
+agent works, collapses it when the answer is ready, and does not save it: reopening the
+conversation shows the answers only. A malformed or foreign activity event ends the request with
+an invalid-response error, like any other malformed event.
+
 Token totals cover every governed model attempt in that response, including
 revisions and tool selection. Input counts include cache reads/writes once;
 cache hit is cache-read tokens divided by input tokens. Time measures the UI

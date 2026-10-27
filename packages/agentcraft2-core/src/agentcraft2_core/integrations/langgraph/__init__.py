@@ -12,6 +12,7 @@ from agentcraft2_core.integrations.langgraph.checkpoint import (
     scoped_thread_id,
 )
 from agentcraft2_core.integrations.langgraph.context import current_request_context
+from agentcraft2_core.integrations.langgraph.live import report_activity
 from agentcraft2_core.integrations.langgraph.model import (
     GovernedChatModel,
     describe_model_response,
@@ -35,6 +36,7 @@ __all__ = [
     "current_request_context",
     "describe_model_response",
     "govern_tools",
+    "report_activity",
     "scoped_thread_id",
     "static_system_prompt",
 ]

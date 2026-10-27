@@ -15,7 +15,7 @@ from chainlit.types import ThreadDict
 from fastapi import Request, Response
 from starlette.datastructures import Headers
 
-from agentcraft2_ui.application.progress import Draft
+from agentcraft2_ui.application.progress import Activity, Draft
 from agentcraft2_ui.contracts.queries import ContractError, PageRequest
 from agentcraft2_ui.integrations.answer_format import answer_id, outcome_text
 from agentcraft2_ui.integrations.data_layer import DataLayer
@@ -98,6 +98,42 @@ async def resume(thread: ThreadDict) -> None:
         thread.update(restored)
 
 
+class ActivityStep:
+    """The expandable list of what the agent is doing; browser-only, like the draft."""
+
+    def __init__(self, parent_id: str) -> None:
+        self.parent_id = parent_id
+        self.step: cl.Step | None = None
+
+    async def show(self, activities: tuple[Activity, ...]) -> None:
+        """Open the step on the first line and keep its list current."""
+        lines = "\n".join(
+            f"- {a.label}" + (f" ({a.detail})" if a.detail else "") for a in activities
+        )
+        if self.step is None:
+            self.step = cl.Step(
+                name="Activity", type="tool", default_open=True, parent_id=self.parent_id
+            )
+            self.step.start = datetime.now(UTC).isoformat()
+            self.step.output = lines
+            await self.step.send()
+        else:
+            self.step.output = lines
+            await self.step.update()
+
+    async def finish(self) -> None:
+        """Collapse the step once the answer is ready.
+
+        The data layer stores no steps, so a reopened conversation shows answers only.
+        """
+        if self.step is not None:
+            count = len((self.step.output or "").splitlines())
+            self.step.name = f"Activity · {count} step{'s' if count != 1 else ''}"
+            self.step.default_open = False
+            self.step.end = datetime.now(UTC).isoformat()
+            await self.step.update()
+
+
 @cl.on_message
 async def respond(message: cl.Message) -> None:
     """Display provisional text, then remove it when the saved outcome is ready."""
@@ -128,6 +164,8 @@ async def respond(message: cl.Message) -> None:
         displayed_call = draft.call
         await draft_step.stream_token(draft.text or "Waiting for model text…", is_sequence=True)
 
+    activity = ActivityStep(message.id)
+
     async def remove_draft() -> None:
         if draft_step is not None:
             # This step exists only in the browser. Delete its presentation
@@ -144,6 +182,7 @@ async def respond(message: cl.Message) -> None:
             message.id,
             message.content,
             on_progress=show_draft,
+            on_activity=activity.show,
         )
     except ContractError as error:
         await cl.Message(
@@ -160,6 +199,7 @@ async def respond(message: cl.Message) -> None:
         return
     finally:
         await remove_draft()
+        await activity.finish()
     # A request may outlive a sign-out: revalidate once more before pushing the answer.
     await current_principal(resources)
     await cl.Message(id=answer_id(run), content=outcome_text(run)).send()

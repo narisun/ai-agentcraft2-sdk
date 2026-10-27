@@ -1,9 +1,11 @@
 """Negotiate live drafts around the same governed invocation and final envelope."""
 
 import asyncio
+import contextlib
 import json
 import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
+from typing import Any
 
 from anyio import CancelScope
 from starlette.responses import Response, StreamingResponse
@@ -13,6 +15,11 @@ from agentcraft2_core.integrations.http.streaming import ClosingStreamingRespons
 from agentcraft2_core.observability.live import LiveRun, bind_live_run
 
 _LOG = logging.getLogger(__name__)
+
+
+def _offer(queue: asyncio.Queue[tuple[str, dict[str, object]] | None], item: Any) -> None:
+    with contextlib.suppress(asyncio.QueueFull):
+        queue.put_nowait(item)
 
 
 def live_response(
@@ -45,7 +52,27 @@ async def _events(
             # Synchronous graph nodes can invoke a model through LoopBridge.
             await asyncio.wrap_future(asyncio.run_coroutine_threadsafe(queue.put(item), owner_loop))
 
-    live = LiveRun(context, draft)
+    sequence = 0
+
+    async def activity(kind: str, label: str, detail: str | None) -> None:
+        nonlocal sequence
+        sequence += 1
+        body: dict[str, object] = {
+            **identity,
+            "seq": sequence,
+            "kind": kind,
+            "label": label,
+            "detail": detail,
+        }
+        item = ("activity", body)
+        # Advisory: never make the request wait for a reader that is behind.
+        if asyncio.get_running_loop() is owner_loop:
+            with contextlib.suppress(asyncio.QueueFull):
+                queue.put_nowait(item)
+        else:
+            owner_loop.call_soon_threadsafe(_offer, queue, item)
+
+    live = LiveRun(context, draft, activity=activity)
 
     async def execute() -> None:
         try:

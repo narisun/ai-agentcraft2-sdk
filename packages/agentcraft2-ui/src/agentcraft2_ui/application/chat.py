@@ -9,6 +9,8 @@ from uuid import uuid4
 from agentcraft2_core.contracts import Principal, Scope
 from agentcraft2_ui.application.catalog import same_agent_binding
 from agentcraft2_ui.application.progress import (
+    ActivityCallback,
+    Draft,
     ProgressCallback,
     ProgressFeed,
     bind_progress,
@@ -34,6 +36,10 @@ def view_for(principal: Principal, agent_id: str) -> ViewContext:
         principal=principal,
         scope=Scope(tenant=principal.tenant, subject=principal.subject, application=agent_id),
     )
+
+
+async def _no_draft(draft: Draft) -> None:
+    """A browser that shows only activity ignores draft text."""
 
 
 class ChatService:
@@ -68,6 +74,7 @@ class ChatService:
         question: str,
         *,
         on_progress: ProgressCallback | None = None,
+        on_activity: ActivityCallback | None = None,
     ) -> RunRecord:
         """Admit once; duplicate sends with the same content reattach to the same run."""
         if self.closing:
@@ -90,9 +97,9 @@ class ChatService:
             # Closing a tab, pressing Stop or cancelling a browser handler cannot
             # cancel an HTTP request whose outcome the application must record.
             feed = self.progress.get(run.run_id)
-            if on_progress is not None and feed is not None:
+            if (on_progress is not None or on_activity is not None) and feed is not None:
                 try:
-                    await wait_with_progress(task, feed, on_progress)
+                    await wait_with_progress(task, feed, on_progress or _no_draft, on_activity)
                 except Exception:  # noqa: BLE001 - display failures never change dispatch
                     logger.warning("Live display stopped; the admitted request continues")
             return await asyncio.shield(task)

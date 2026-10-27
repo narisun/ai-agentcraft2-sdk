@@ -88,6 +88,61 @@ async def test_live_step_is_removed_and_final_metrics_survive_resume(
             await resumed.disconnect()
 
 
+async def test_activity_shows_while_the_agent_works_collapses_and_is_not_kept(
+    server: LocalServer,
+) -> None:
+    server.streaming = True
+    server.activity_frames = [
+        {"seq": 1, "kind": "searching", "label": "Searching the memo", "detail": None},
+        {"seq": 2, "kind": "reading", "label": "Reading a source", "detail": "covenants"},
+    ]
+    async with server.login() as client:
+        before = {t["thread_id"] for t in (await client.get("/api/threads")).json()["items"]}
+        sock = await connect(server, client)
+        try:
+            thread = await wait_thread(client, before)
+            await send(sock, thread, "Stream a response")
+            await wait_turns(client, thread, 1)
+            await poll(
+                lambda: any(
+                    name == "new_message" and value.get("type") == "assistant_message"
+                    for name, value in sock.events_seen
+                )
+            )
+            steps = [
+                value
+                for name, value in sock.events_seen
+                if name == "new_message" and value.get("name", "").startswith("Activity")
+            ]
+            assert steps
+            assert steps[0]["defaultOpen"] is True
+            shown = "".join(
+                value.get("output", "") + value.get("token", "")
+                for name, value in sock.events_seen
+                if name in {"new_message", "update_message", "stream_token"}
+                and value.get("id") == steps[0]["id"]
+            )
+            assert "Searching the memo" in shown
+            assert "Reading a source" in shown
+            assert "covenants" in shown
+            closed = [
+                value
+                for name, value in sock.events_seen
+                if name == "update_message" and value.get("id") == steps[0]["id"]
+            ]
+            assert closed[-1]["defaultOpen"] is False, "it collapses when the answer is ready"
+            assert closed[-1]["name"] == "Activity · 2 steps"
+        finally:
+            await sock.disconnect()
+        resumed = await connect(server, client, thread)
+        try:
+            restored = [value for name, value in resumed.events_seen if name == "resume_thread"][-1]
+            assert all(step["type"] != "tool" for step in restored["steps"])
+            assert "Searching the memo" not in str(restored)
+        finally:
+            await resumed.disconnect()
+
+
 async def test_resume_recovers_lost_response_without_another_agent_invocation(
     server: LocalServer,
 ) -> None:

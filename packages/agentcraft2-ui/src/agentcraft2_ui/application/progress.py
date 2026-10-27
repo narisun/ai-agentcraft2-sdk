@@ -17,6 +17,22 @@ class Draft:
 
 ProgressCallback = Callable[[Draft], Awaitable[None]]
 
+#: The agent sends at most this many activity lines per request; the feed keeps no more.
+MAX_ACTIVITIES = 64
+
+
+@dataclass(frozen=True)
+class Activity:
+    """One operational status line from the agent: what it is doing, never model text."""
+
+    seq: int
+    kind: str
+    label: str
+    detail: str | None
+
+
+ActivityCallback = Callable[[tuple[Activity, ...]], Awaitable[None]]
+
 
 class ProgressFeed:
     """Keep one bounded snapshot per listener, coalescing rapid token updates."""
@@ -24,6 +40,13 @@ class ProgressFeed:
     def __init__(self) -> None:
         self.current = Draft(0, "")
         self.listeners: set[asyncio.Queue[Draft]] = set()
+        self.activities: list[Activity] = []
+
+    def add_activity(self, activity: Activity) -> None:
+        """Keep lines in sequence order; a repeated or older number is ignored."""
+        last = self.activities[-1].seq if self.activities else 0
+        if activity.seq > last and len(self.activities) < MAX_ACTIVITIES:
+            self.activities.append(activity)
 
     def publish(self, call: int, text: str, *, reset: bool) -> None:
         """Retain at most 65,536 draft characters, separate from transport byte limits."""
@@ -69,12 +92,27 @@ def publish_draft(call: int, text: str, *, reset: bool) -> None:
         feed.publish(call, text, reset=reset)
 
 
+def publish_activity(activity: Activity) -> None:
+    """Offer an activity line without coupling the transport to a browser framework."""
+    feed = _FEED.get()
+    if feed is not None:
+        feed.add_activity(activity)
+
+
 async def wait_with_progress(
-    task: asyncio.Task[object], feed: ProgressFeed, callback: ProgressCallback
+    task: asyncio.Task[object],
+    feed: ProgressFeed,
+    callback: ProgressCallback,
+    on_activity: ActivityCallback | None = None,
 ) -> None:
     """Render at most twenty snapshots a second; completion never waits on a token queue."""
+    shown = 0
     with feed.listen() as queue:
         while not task.done():
+            if on_activity is not None and len(feed.activities) > shown:
+                shown = len(feed.activities)
+                async with asyncio.timeout(2):
+                    await on_activity(tuple(feed.activities))
             try:
                 draft = await asyncio.wait_for(queue.get(), timeout=0.1)
             except TimeoutError:

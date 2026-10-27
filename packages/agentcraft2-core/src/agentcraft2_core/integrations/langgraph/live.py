@@ -6,7 +6,8 @@ from typing import Any
 from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, message_chunk_to_message
 from langchain_core.runnables import Runnable
 
-from agentcraft2_core.observability.live import LiveRun
+from agentcraft2_core.integrations.langgraph.context import current_request_context
+from agentcraft2_core.observability.live import LiveRun, publish_activity
 from agentcraft2_core.pipeline.guardrails import OutputPreviewCheck
 
 
@@ -63,3 +64,8 @@ async def publish_reply(
     text = _text(content)
     for offset in range(0, len(text), 1024):
         await live.sink(call, text[offset : offset + 1024])
+
+
+async def report_activity(kind: str, label: str, detail: str | None = None) -> None:
+    """Show the current request's user what a graph node is doing; see ``publish_activity``."""
+    await publish_activity(current_request_context(), kind, label, detail)

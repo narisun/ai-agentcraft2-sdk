@@ -1,13 +1,16 @@
 """Bounded SSE parsing for the negotiated /invoke response; never retry a stream."""
 
 import json
+import re
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
 import httpx
 
-from agentcraft2_ui.application.progress import publish_draft
+from agentcraft2_ui.application.progress import Activity, publish_activity, publish_draft
 from agentcraft2_ui.contracts.queries import ContractError, ErrorCode
+
+_KIND = re.compile(r"[a-z][a-z0-9_]{0,31}")
 
 
 @dataclass(frozen=True)
@@ -67,6 +70,8 @@ async def terminal_body(
             raise ContractError(ErrorCode.INVALID_RESPONSE)
         if name == "draft":
             _draft(value)
+        elif name == "activity":
+            _activity(value)
         elif name == "result":
             result = TerminalEvent(data)
         elif (
@@ -95,3 +100,18 @@ def _draft(value: dict[str, object]) -> None:
     ):
         raise ContractError(ErrorCode.INVALID_RESPONSE)
     publish_draft(call, text, reset=reset)
+
+
+def _activity(value: dict[str, object]) -> None:
+    seq, kind, label, detail = (value.get(k) for k in ("seq", "kind", "label", "detail"))
+    if (
+        type(seq) is not int
+        or seq < 1
+        or not isinstance(kind, str)
+        or _KIND.fullmatch(kind) is None
+        or not isinstance(label, str)
+        or not 0 < len(label) <= 120
+        or not (detail is None or (isinstance(detail, str) and len(detail) <= 200))
+    ):
+        raise ContractError(ErrorCode.INVALID_RESPONSE)
+    publish_activity(Activity(seq, kind, label, detail))
