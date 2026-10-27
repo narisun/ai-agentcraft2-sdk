@@ -178,9 +178,29 @@ def test_repeating_past_the_allowance_stops_the_turn() -> None:
 
 
 def test_the_read_ahead_can_be_turned_off_but_no_other_limit_can_be_zero() -> None:
-    assert QnaLimits().prefetch_cards == 5
+    assert QnaLimits().prefetch_cards == 8
     assert load_qna_limits(source=Settings({"RMPREP_QNA_PREFETCH_CARDS": "0"})).prefetch_cards == 0
     with pytest.raises(ConfigurationError, match="RMPREP_QNA_MAX_TOOL_CALLS"):
         load_qna_limits(source=Settings({"RMPREP_QNA_MAX_TOOL_CALLS": "0"}))
     with pytest.raises(ConfigurationError, match="RMPREP_QNA_PREFETCH_CARDS"):
         load_qna_limits(source=Settings({"RMPREP_QNA_PREFETCH_CARDS": "-1"}))
+
+
+# --- retries the platform did inside one call ------------------------------------------------------
+
+
+def test_retries_inside_one_call_cost_model_calls_and_a_reservation_each() -> None:
+    from rmprep_v2.qna_ledger import charge_retries
+
+    ledger = reserve(new_ledger(0.0), LIMITS, planned_input=5_000)
+    charged = charge_retries(ledger, LIMITS, planned_input=5_000, attempts=3)
+    assert charged["model_calls"] == 3
+    assert charged["reserved_tokens"] == 3 * (5_000 + LIMITS.output_tokens)
+
+
+def test_a_single_attempt_or_an_unknown_count_costs_nothing_extra() -> None:
+    from rmprep_v2.qna_ledger import charge_retries
+
+    ledger = reserve(new_ledger(0.0), LIMITS, planned_input=5_000)
+    for attempts in (1, 0, None, True, "3"):
+        assert charge_retries(ledger, LIMITS, planned_input=5_000, attempts=attempts) == ledger

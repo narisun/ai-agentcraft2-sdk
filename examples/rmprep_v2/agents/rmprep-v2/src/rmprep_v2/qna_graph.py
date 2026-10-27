@@ -57,6 +57,7 @@ from rmprep_v2.offload import evidence_scope, hydrate_messages, offloading, stab
 from rmprep_v2.qna_context import assemble
 from rmprep_v2.qna_ledger import (
     Ledger,
+    charge_retries,
     model_gate,
     new_ledger,
     note_tool_calls,
@@ -347,6 +348,12 @@ def build_qna_graph(
                     str(current[-1].id), len(current), text_content(reply), reply.tool_calls
                 )
             }
+        )
+        ledger = charge_retries(
+            ledger,
+            limits,
+            planned_input=planned,
+            attempts=reply.response_metadata.get("agentcraft2_attempts"),
         )
         ledger = reconcile(ledger, limits, planned_input=planned, usage=reply.usage_metadata)
 

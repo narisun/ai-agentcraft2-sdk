@@ -90,7 +90,7 @@ class QnaLimits:
     max_revisions: int = 2
     timeout_seconds: int = 60
     max_no_progress_repeats: int = 2
-    prefetch_cards: int = 5
+    prefetch_cards: int = 8
     """Search hits read automatically before the model is asked; zero turns this off."""
     max_steps: int | None = None
     """Graph steps allowed for one question. Normally derived from the call limits."""

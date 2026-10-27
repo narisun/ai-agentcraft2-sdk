@@ -17,6 +17,7 @@ from rmprep_v2.settings import QnaLimits
 
 __all__ = [
     "Ledger",
+    "charge_retries",
     "model_gate",
     "new_ledger",
     "note_tool_calls",
@@ -127,3 +128,18 @@ def note_tool_calls(ledger: Ledger, calls: Sequence[tuple[str, Mapping[str, Any]
         "repeats": repeats,
         "last_calls": last,
     }
+
+
+def charge_retries(
+    ledger: Ledger, limits: QnaLimits, *, planned_input: int, attempts: object
+) -> Ledger:
+    """Count the attempts the platform made inside one call, beyond the first.
+
+    The governed model retries a transient failure itself and returns one reply, saying in its
+    metadata how many attempts that took. Each extra attempt is a model call and, because a
+    failed attempt reports no usage, is reserved at the same planned input and maximum output.
+    An absent or malformed count is one attempt.
+    """
+    if not isinstance(attempts, int) or isinstance(attempts, bool) or attempts <= 1:
+        return ledger
+    return reserve(ledger, limits, planned_input, attempts=attempts - 1)

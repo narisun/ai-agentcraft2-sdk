@@ -156,7 +156,7 @@ def draft(packs: dict[tuple[str, str], Pack]) -> list[Case]:
     b.add(
         "omitted_detail",
         wawo,
-        "What is the latest borrowing-base availability and its date?",
+        "What is the borrowing-base availability on record, and its date?",
         refs=[latest["source_ref"]],
         facts=[
             f"Availability is {latest['availability']} {latest['currency']} as of {latest['as_of']}."
@@ -312,7 +312,8 @@ def draft(packs: dict[tuple[str, str], Pack]) -> list[Case]:
     b.add(
         "refresh",
         jones,
-        "Retrieve the latest covenant records and say whether anything changed since the memo.",
+        f"Retrieve the latest covenant records for {_name(jones)} ({JONES}) and say whether "
+        "anything changed since the memo.",
         mode="refresh",
         refs=jones_cov,
         retrieval=True,
@@ -324,11 +325,12 @@ def draft(packs: dict[tuple[str, str], Pack]) -> list[Case]:
     b.add(
         "refresh",
         cana,
-        "Pull the current treasury control records and compare them with the memo.",
+        f"What are the current treasury control records for {_name(cana)} ({CANA})? "
+        "Has anything changed since the memo?",
         mode="refresh",
         refs=references(cana, "treasury_controls"),
         retrieval=True,
-        facts=["Compares the retrieved records with the memo's, naming both dates."],
+        facts=["Says what changed since the memo, naming both dates."],
     )
 
     # H. Questions the evidence cannot settle. A careful answer says what is unknown.

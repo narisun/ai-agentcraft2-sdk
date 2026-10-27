@@ -456,3 +456,90 @@ Behaviour is shown by tests rather than a rate: the workspace's 648 tests pass.
   panel, activity log or warning styling for the new metadata.
 - The memo agent keeps the old checks, so a memo's citations are still judged against the messages.
 - Role masking of cards and an authorized-view version in the visibility record remain open (D-04).
+
+## V5 results: the old-versus-new harness, retry accounting and Bedrock caching
+
+### What was built
+
+- **Harness** (`evals/compare.py`, `python -m rmprep_v2.evals.compare`). It runs every case in
+  `cases.jsonl` against both workspaces, `rmprep` and `rmprep-v2`, in one process, on the same data and
+  the same scripted conversation: build the memo, then ask the case's question. The model is scripted:
+  it answers with the case's gold answer, citing the records the case requires, and calls the tools a
+  careful model would (a fresh read for a refresh case). Each run is classified `accepted`, `clarified`
+  (the selection rules asked the user to choose a memo), `limitation` or `rejected`, and records model
+  calls, tool calls, the largest model input (estimator tokens), checkpoint bytes, citations that name
+  no known record, and warnings.
+- **Retry accounting.** The SDK change (branch `feat/model-attempts-in-reply`) puts the number of
+  physical attempts a governed model call took into the reply's `response_metadata`
+  (`agentcraft2_attempts`). In `qna_ledger.charge_retries` the Q&A graph reserves the extra attempts
+  against the model-call and input-token limits, so a call retried inside the SDK counts as the several
+  calls it was.
+- **Bedrock Converse caching** (branch `feat/bedrock-converse-caching`, a separate SDK change). Options
+  `prompt_caching` and `cache_ttl` (`5m` or `1h`) in `AC2_MODEL_OPTIONS`. The provider puts a cache
+  point after the static prefix of the system prompt (`static_system_prompt`) and asks langchain-aws to
+  cache the conversation's tail; a five-minute cache never names its ttl. Cached tokens are added to the
+  input total once, so audit and the ledger see the full input.
+- **Case wording.** Running the cases showed that several drafts asked something the selection rules
+  treat as a different request (the word "compare" with a memo, "latest" as a refresh), so QA-010,
+  QA-026 and QA-027 were reworded to name their client or date. The read-ahead default rose from 5 to 8
+  cards (below).
+
+### Measured, 38 draft cases, scripted model
+
+| | rmprep | rmprep-v2 |
+| --- | --- | --- |
+| Accepted | 34 of 38 | 35 of 38 |
+| Rejected after revisions | 3 (QA-020, QA-021, QA-037) | 0 |
+| Ended in a limitation answer | 0 | 2 (QA-022, QA-037) |
+| Asked the user to choose a memo | 1 (QA-023) | 1 (QA-023) |
+| Largest model input | 50.7k | 10.6k |
+| Mean model calls per case | 1.18 | 1.13 |
+| Mean tool calls per case | 0.05 | 0.92 |
+| Mean checkpoint size | 1.18 MB | 0.27 MB |
+
+The cross-section family went from 1 of 3 to 3 of 3 accepted with the read-ahead; the comparison family
+is 1 of 2 against 0 of 2 (QA-022 ends in a limitation, QA-023 asks for a selection in both). Every other
+family is equal. The new design's largest input is about a fifth of the old one's and its checkpoints
+about a quarter of the size, which is the effect of keeping evidence out of state and out of the prompt.
+
+Read-ahead sweep, new design only: 5 cards gave 34 of 38, 8 gave 35, 10 gave 35. Eight is the default.
+Two full runs with the same code gave different counts (rmprep 33 and 34 of 38, rmprep-v2 33 and 35),
+so a difference of one or two cases is within run-to-run variation; the cause was not isolated. Only the
+input and checkpoint differences are large enough to read as an effect.
+
+### What this does not show
+
+- **No live model was used.** The scripted model returns the gold answer, so "accepted" means the
+  design let a right answer through and kept its evidence reachable, not that a model finds the right
+  answer. Answer quality, tool-use judgement and cost need a live run.
+- **The cases are drafts.** They have not been reviewed by an RM and there is no frozen holdout, so
+  tuning the read-ahead on them (5 to 8) is optimistic. A live evaluation needs a reviewed, frozen set,
+  at least three repetitions per case, and approved credentials.
+- **QA-037** asks for a memo by explicit date, which the selection rules do not accept; it fails in
+  both. Whether an explicit date should select a memo is a product decision.
+- **QA-022 and QA-023** are comparison cases; QA-023 is ambiguous in both designs and QA-022 is
+  not recovered by the new one.
+- Token figures are the estimator's (bytes divided by three), conservative against a real tokenizer.
+
+### Bedrock caching: facts and limits
+
+- Cache points are processed tools, then system, then messages; at most four per request; a minimum
+  prefix applies per model (1,024 tokens for Sonnet 4.5, 4,096 for Opus 4.5 and Haiku 4.5), below which
+  the point is ignored without an error. The v2 static prefix is about 4.7k estimator tokens, so on the
+  4,096-token models the real count must be checked.
+- Bedrock's `inputTokens` excludes cached tokens. The provider reports
+  `inputTokens + cacheRead + cacheWrite` as the input total, with the split kept in
+  `input_token_details`; a test pins that the governed model audits it once.
+- Wire behaviour is tested against a recording client and the botocore stubber. No call to Bedrock was
+  made, so hit rates and savings are unmeasured. The tests need `langchain_aws`, which is not in the
+  global environment.
+- **Counting before a call is not wired.** Bedrock's `CountTokens` could replace the estimator for the
+  ledger's reservation, but the SDK has no governed counting path (policy, audit, resilience). Adding
+  one is a policy decision, so the ledger still reserves with the estimator.
+
+### Not done in V5
+
+- The live evaluation, calibration of the estimator against real token counts, and cache hit rates.
+- Input tokens of a failed physical attempt are unknown, so a retry is charged at the planned input.
+- The two SDK branches are local and unpushed; the generated docs and the guide were regenerated for
+  the new Bedrock options.
