@@ -1,13 +1,14 @@
 """A reusable model/tool loop for specialists with different instructions."""
 
+import hashlib
 import json
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 from agentcraft2_core import RequestContext, ValidationFailed
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
 from langchain_core.runnables import Runnable
 from langchain_core.tools import BaseTool
 from langgraph.graph import START, StateGraph
@@ -17,9 +18,23 @@ from langgraph.prebuilt import ToolNode, tools_condition
 from rmprep_v2.clients import client_names, lookup_in_turn, recent_client_lookup, resolved_clients
 from rmprep_v2.context import ContextBuilder
 from rmprep_v2.context_tools import tool_context_issues
+from rmprep_v2.evidence_store import EvidenceStore
 from rmprep_v2.focus import ConversationFocus, conversation_focus, focus_update
 from rmprep_v2.memos import MemoVersion, memo_draft, memo_from_turn, turns
-from rmprep_v2.response_review import response_advisories, response_issues, tool_payload, word_limit
+from rmprep_v2.offload import (
+    SOURCE_KEY,
+    evidence_scope,
+    hydrate_messages,
+    offloading,
+    stable_id,
+)
+from rmprep_v2.response_review import (
+    response_advisories,
+    response_issues,
+    text_content,
+    tool_payload,
+    word_limit,
+)
 from rmprep_v2.selection import ContextSelection, select_context
 from rmprep_v2.state import State
 
@@ -82,6 +97,38 @@ def _accepted_update(
     return update
 
 
+def _reply_id(reply: AIMessage, current: Sequence[AnyMessage]) -> str:
+    """An ID that a replay of this turn gives again; the provider's own ID is random."""
+    last = current[-1].id
+    if last is None:
+        return reply.id or str(uuid4())
+    return stable_id(str(last), len(current), text_content(reply), reply.tool_calls)
+
+
+async def _publish(
+    memo: MemoVersion, current: Sequence[AnyMessage], evidence: EvidenceStore, scope: str
+) -> MemoVersion:
+    """Publish the memo's manifest: the sources behind it and the hash of its text."""
+    source_ids = sorted(
+        {
+            str(message.additional_kwargs[SOURCE_KEY])
+            for message in current
+            if isinstance(message, ToolMessage) and SOURCE_KEY in message.additional_kwargs
+        }
+    )
+    manifest = {
+        "memo_id": memo["memo_id"],
+        "version": memo["version"],
+        "uen": memo["uen"],
+        "meeting_date": memo["meeting_date"],
+        "source_ids": source_ids,
+        "source_refs": memo["source_refs"],
+        "body_sha256": hashlib.sha256(memo["content"].encode("utf-8")).hexdigest(),
+    }
+    manifest_id = await evidence.publish_manifest(scope, manifest)
+    return MemoVersion(**{**memo, "manifest_id": manifest_id, "source_ids": source_ids})
+
+
 def build_specialist(
     model: Runnable[Any, AIMessage],
     tools: Sequence[BaseTool],
@@ -90,11 +137,21 @@ def build_specialist(
     default_word_limit: int = 350,
     context_builder: ContextBuilder | None = None,
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
+    evidence: EvidenceStore | None = None,
 ) -> CompiledStateGraph[Any, Any, Any, Any]:
-    """Use injected, governed model and tools; inherit the parent checkpoint."""
+    """Use injected, governed model and tools; inherit the parent checkpoint.
+
+    With an ``evidence`` store, evidence results are kept there and the checkpoint holds
+    references; each call reads the conversation with its references restored.
+    """
     contexts = context_builder or ContextBuilder()
 
     async def call_model(state: State) -> dict[str, Any]:
+        scope = evidence_scope() if evidence is not None else ""
+        if evidence is not None:
+            # A local copy for this call: the update returned below never carries it back.
+            restored = await hydrate_messages(state["messages"], evidence, scope)
+            state = cast(State, {**state, "messages": restored})
         current = turns(state["messages"])[-1]
         creating = state.get("route") == "memoagent"
         selection = state.get("selection") or select_context(
@@ -143,7 +200,7 @@ def build_specialist(
         for attempt in range(3):
             contexts.check_size(conversation)
             reply = await model.ainvoke(conversation)
-            reply = reply.model_copy(update={"id": reply.id or str(uuid4())})
+            reply = reply.model_copy(update={"id": _reply_id(reply, current)})
             if creating:
                 reply = memo_draft(reply)
             draft = reply
@@ -194,6 +251,8 @@ def build_specialist(
                 assembled.diagnostics["review_advisories"] = response_advisories(
                     reply, assembled.messages[1:]
                 )
+                if memo is not None and evidence is not None:
+                    memo = await _publish(memo, current, evidence, scope)
                 return _accepted_update(state, reply, memo, selection, assembled.diagnostics)
             if attempt < 2:
                 # Drafts remain visible in model tracing but are never saved as
@@ -224,7 +283,10 @@ def build_specialist(
 
     builder = StateGraph(State, context_schema=RequestContext)
     builder.add_node("model", call_model)
-    builder.add_node("tools", ToolNode(tools))
+    tool_node = ToolNode(tools)
+    builder.add_node(
+        "tools", offloading(tool_node, evidence) if evidence is not None else tool_node
+    )
     builder.add_edge(START, "model")
     builder.add_conditional_edges("model", tools_condition)
     builder.add_edge("tools", "model")

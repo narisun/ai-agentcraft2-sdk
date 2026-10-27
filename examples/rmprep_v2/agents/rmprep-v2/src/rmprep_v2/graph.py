@@ -13,6 +13,7 @@ from langgraph.graph.state import CompiledStateGraph
 
 from rmprep_v2.artifacts import memo_artifacts
 from rmprep_v2.context import ContextBuilder
+from rmprep_v2.evidence_store import EvidenceStore, SqliteEvidenceStore
 from rmprep_v2.prompts import MEMO_PROMPT, QNA_PROMPT
 from rmprep_v2.router import destination, router
 from rmprep_v2.specialist import build_specialist
@@ -42,11 +43,21 @@ async def registered_mcp_tools(services: ServiceContainer) -> list[BaseTool]:
     return tools
 
 
+def _evidence_store(services: ServiceContainer, given: EvidenceStore | None) -> EvidenceStore:
+    """The store the caller gave, or a file beside the checkpoints (memory without a folder)."""
+    if given is not None:
+        return given
+    folder = services.config.state_dir
+    return SqliteEvidenceStore(folder / "evidence.sqlite" if folder is not None else ":memory:")
+
+
 def build_graph(
     services: ServiceContainer,
     mcp_tools: Sequence[BaseTool] = (),
     *,
     context_builder: ContextBuilder | None = None,
+    evidence_store: EvidenceStore | None = None,
+    offload_evidence: bool = True,
 ) -> CompiledStateGraph[Any, Any, Any, Any]:
     """Build the agent graph from governed parts.
 
@@ -54,9 +65,15 @@ def build_graph(
         services: A started service container.
         mcp_tools: Governed tools of registered MCP servers, already loaded.
         context_builder: Optional policy for assembling bounded model input.
+        evidence_store: Where evidence results are kept while the checkpoint holds
+            references. Defaults to ``evidence.sqlite`` in the service's state folder, or
+            memory when the service has none.
+        offload_evidence: ``False`` keeps results in the conversation, as rmprep does.
+            Only a comparison with the previous behaviour needs it.
     """
     # Both specialists use the same provider and governed tools, but different prompts.
     model = services.model("default").bind_tools(mcp_tools)
+    evidence = _evidence_store(services, evidence_store) if offload_evidence else None
     builder = StateGraph(State, context_schema=RequestContext)
     builder.add_node("router", router)
     builder.add_node(
@@ -68,12 +85,18 @@ def build_graph(
             default_word_limit=1000,
             now=services.clock.now,
             context_builder=context_builder,
+            evidence=evidence,
         ),
     )
     builder.add_node(
         "qnaagent",
         build_specialist(
-            model, mcp_tools, QNA_PROMPT, now=services.clock.now, context_builder=context_builder
+            model,
+            mcp_tools,
+            QNA_PROMPT,
+            now=services.clock.now,
+            context_builder=context_builder,
+            evidence=evidence,
         ),
     )
     builder.add_edge(START, "router")

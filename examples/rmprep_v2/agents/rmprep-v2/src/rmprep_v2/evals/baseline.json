@@ -1,6 +1,7 @@
 {
   "meeting_date": "2026-08-03",
   "estimator": "utf8_bytes/3 + 16",
+  "evidence_offloaded": false,
   "tool_definitions": {
     "count": 4,
     "chars": 3228,
@@ -1451,7 +1452,7 @@
         "question_and_loop": 23603
       },
       "checkpoint_messages": 4,
-      "checkpoint_message_bytes": 72708,
+      "checkpoint_message_bytes": 72670,
       "reported_estimate": 32205
     },
     {
@@ -1469,7 +1470,7 @@
         "question_and_loop": 50
       },
       "checkpoint_messages": 6,
-      "checkpoint_message_bytes": 73771,
+      "checkpoint_message_bytes": 73714,
       "reported_estimate": 11121
     },
     {
@@ -1487,7 +1488,7 @@
         "question_and_loop": 44
       },
       "checkpoint_messages": 8,
-      "checkpoint_message_bytes": 74971,
+      "checkpoint_message_bytes": 74857,
       "reported_estimate": 11832
     },
     {
@@ -1505,7 +1506,7 @@
         "question_and_loop": 44
       },
       "checkpoint_messages": 10,
-      "checkpoint_message_bytes": 76070,
+      "checkpoint_message_bytes": 75899,
       "reported_estimate": 11449
     },
     {
@@ -1523,7 +1524,7 @@
         "question_and_loop": 46
       },
       "checkpoint_messages": 12,
-      "checkpoint_message_bytes": 77163,
+      "checkpoint_message_bytes": 76935,
       "reported_estimate": 33079
     },
     {
@@ -1541,7 +1542,7 @@
         "question_and_loop": 46
       },
       "checkpoint_messages": 14,
-      "checkpoint_message_bytes": 78299,
+      "checkpoint_message_bytes": 78014,
       "reported_estimate": 33195
     },
     {
@@ -1559,7 +1560,7 @@
         "question_and_loop": 45
       },
       "checkpoint_messages": 16,
-      "checkpoint_message_bytes": 79182,
+      "checkpoint_message_bytes": 78878,
       "reported_estimate": 33322
     },
     {
@@ -1577,7 +1578,7 @@
         "question_and_loop": 50
       },
       "checkpoint_messages": 18,
-      "checkpoint_message_bytes": 80245,
+      "checkpoint_message_bytes": 79922,
       "reported_estimate": 11936
     },
     {
@@ -1595,7 +1596,7 @@
         "question_and_loop": 44
       },
       "checkpoint_messages": 20,
-      "checkpoint_message_bytes": 81445,
+      "checkpoint_message_bytes": 81065,
       "reported_estimate": 12647
     },
     {
@@ -1613,7 +1614,7 @@
         "question_and_loop": 44
       },
       "checkpoint_messages": 22,
-      "checkpoint_message_bytes": 82544,
+      "checkpoint_message_bytes": 82107,
       "reported_estimate": 12264
     },
     {
@@ -1631,7 +1632,7 @@
         "question_and_loop": 46
       },
       "checkpoint_messages": 24,
-      "checkpoint_message_bytes": 83637,
+      "checkpoint_message_bytes": 83143,
       "reported_estimate": 33894
     },
     {
@@ -1649,7 +1650,7 @@
         "question_and_loop": 46
       },
       "checkpoint_messages": 26,
-      "checkpoint_message_bytes": 84773,
+      "checkpoint_message_bytes": 84222,
       "reported_estimate": 34010
     },
     {
@@ -1667,11 +1668,11 @@
         "question_and_loop": 45
       },
       "checkpoint_messages": 28,
-      "checkpoint_message_bytes": 85656,
+      "checkpoint_message_bytes": 85086,
       "reported_estimate": 34137
     }
   ],
   "checkpoint_sqlite_bytes": {
-    "agent\\checkpoints.sqlite": 9687040
+    "agent\\checkpoints.sqlite": 9617408
   }
 }

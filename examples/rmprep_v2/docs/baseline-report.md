@@ -145,3 +145,72 @@ Sources (LangGraph documentation, read 2026-10-27):
 Baseline to beat: a typical Q&A turn near 8k estimated tokens for every question (today 7k to 9k
 only when a keyword matches, 29k to 30k otherwise), and no checkpoint database growth beyond the
 reference and summary per turn.
+
+## V1 results: evidence store and offloading tool node
+
+### LangGraph Store spike
+
+Can LangGraph's own `Store` (`AsyncSqliteStore`, 1.2.17) hold the evidence? Tried in a scratch
+script on 2026-10-27. **No**, for these reasons:
+
+| Need | Result |
+| --- | --- |
+| Namespaced items with equality filters | Works; a namespace is isolated from a sibling |
+| A source never changes | Not provided: a second `put` with different content silently overwrites |
+| Search by text | Not provided: without an embedding index the `query` argument is ignored (a query that matches nothing still returned every item) |
+| Stay inside one thread | A prefix search crosses threads, so every caller must scope; there is no delete for a namespace |
+| Publish a manifest after checking its sources | No transaction across items |
+
+The store stays our own small protocol on SQLite. It is a good fit for LangGraph's Store later
+if an enterprise deployment wants that backend, because the protocol is six methods.
+
+### What was built
+
+- [evidence_store.py](../agents/rmprep-v2/src/rmprep_v2/evidence_store.py): `EvidenceStore`
+  protocol and `SqliteEvidenceStore`. A source is stored once as canonical JSON with its hash;
+  the same ID and content again is a no-op, other content under the same ID raises
+  `EvidenceConflict`. Every call takes a scope (`RequestContext.scope.key(thread_id)`), and nothing
+  reads across scopes. A manifest is published only when every source it names exists in the
+  scope, and a memo cannot have two manifests.
+- [offload.py](../agents/rmprep-v2/src/rmprep_v2/offload.py): `offloading` wraps `ToolNode`, stores
+  each evidence result and returns a small reference message with a summary; `hydrate_messages`
+  restores the framed result for one model call and is never returned as a state update.
+  A missing source reaches the model as an explicit "evidence unavailable, retrieve it again"
+  message, not as silence.
+- The specialist hydrates once at the top of `call_model`, so context building, the citation and
+  waiver checks, memo registration and focus all read the same messages they always did.
+- An accepted memo publishes a manifest (its sources, source references and body hash) and keeps
+  `manifest_id` and `source_ids` beside its message IDs.
+- Reply IDs derive from the message they follow and the reply itself, so replaying a turn with the
+  same output reproduces its IDs, and a different draft cannot take another's.
+- The store is on by default: a file beside the checkpoints (`evidence.sqlite` in the service's
+  state folder). `build_graph(..., offload_evidence=False)` restores rmprep's behaviour for a
+  comparison.
+
+### Measured, same scripted conversation as the baseline
+
+| | rmprep behaviour | V1 |
+| --- | --- | --- |
+| Checkpoint state after the memo | 72.7 KB | 3.4 KB |
+| Checkpoint state after 13 turns | 85.1 KB | 15.8 KB |
+| Checkpoint database after 13 turns | 9.6 MB | 2.5 MB |
+| Memo turn, model input | 28.2k | 22.9k |
+| Q&A turn that falls back to the whole pack | 29.1k to 30.1k | 23.7k to 24.8k |
+| Q&A turn with a matching section keyword | 7.1k to 8.6k | 7.1k to 8.6k (unchanged) |
+
+- The input drop is not from offloading. The restored result is written as compact JSON, with no
+  spaces after separators, and the estimator counts bytes. A real tokenizer will save less than
+  the estimator shows. Measure it with a provider's counter in V5 before relying on it.
+- State growth is now about 1 KB per turn, and the database about 190 KB per turn. What remains is
+  the conversation itself and the per-turn diagnostics written into state, and every step still
+  stores the whole state again. Slimming the diagnostics and the pruning policy are next candidates.
+
+### Not done in V1
+
+- Evidence cards and full-text search are V2, where they are first needed; the SQLite FTS5 index
+  belongs with them (FTS5 is available in the installed SQLite 3.45).
+- A manifest is published before the checkpoint commits. A replay that produces a different memo
+  leaves the first manifest unreferenced. Cleaning those up needs the retention policy (D-06).
+- Crash tests around the publication boundary, and authorization of derived views, are not written.
+- Tracing and inspection tools show the reference message, which is what the checkpoint holds.
+  That is intended, but anyone who reads checkpoints to see the evidence must read the store.

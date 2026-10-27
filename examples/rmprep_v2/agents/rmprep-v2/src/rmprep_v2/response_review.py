@@ -56,6 +56,8 @@ _MCP_TOOLS = {
     for separator in (".", "_")
     for name in ("get_memo_evidence", "get_client_records", "get_reference_data")
 }
+EVIDENCE_TOOLS = _MCP_TOOLS
+"""The names of the tools whose results are evidence, under both separators."""
 # These target observed waiver mistakes, not arbitrary legal or causal reasoning.
 # In particular, a hedge such as "may" does not establish an absent blocker.
 _WAIVER_ASSERTION = re.compile(

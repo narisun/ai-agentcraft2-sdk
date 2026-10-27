@@ -135,7 +135,8 @@ async def _pack_sizes(
     return rows
 
 
-async def measure(state_dir: Path) -> dict[str, Any]:
+async def measure(state_dir: Path, *, offload: bool = False) -> dict[str, Any]:
+    """Run the scripted conversation. ``offload`` keeps evidence in the evidence store."""
     agent_config = replace(
         load_test_config(
             WORKSPACE / "agents/rmprep-v2/.env.example", state_dir=state_dir / "agent"
@@ -153,7 +154,11 @@ async def measure(state_dir: Path) -> dict[str, Any]:
         MEMO,
         *(ANSWERS * ROUNDS),
     ]
-    report: dict[str, Any] = {"meeting_date": MEETING_DATE, "estimator": "utf8_bytes/3 + 16"}
+    report: dict[str, Any] = {
+        "meeting_date": MEETING_DATE,
+        "estimator": "utf8_bytes/3 + 16",
+        "evidence_offloaded": offload,
+    }
     async with ServiceContainer(server_config) as server_services:
         connector = InProcessMcpConnector({SERVER_ID: build_server(server_services)})
         async with ServiceContainer(
@@ -161,7 +166,7 @@ async def measure(state_dir: Path) -> dict[str, Any]:
         ) as services:
             await services.validate()
             tools = await services.mcp_tools(SERVER_ID)
-            graph = build_graph(services, tools)
+            graph = build_graph(services, tools, offload_evidence=offload)
             caller = await services.authenticate(
                 None, application=APPLICATION, thread_id="baseline"
             )
@@ -221,9 +226,12 @@ async def measure(state_dir: Path) -> dict[str, Any]:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, help="write the report as JSON here")
+    parser.add_argument(
+        "--offload", action="store_true", help="keep evidence in the evidence store (the V1 design)"
+    )
     args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix="rmprep-v2-baseline-") as folder:
-        report = asyncio.run(measure(Path(folder)))
+        report = asyncio.run(measure(Path(folder), offload=args.offload))
     text = json.dumps(report, indent=2, ensure_ascii=False) + "\n"
     if args.output:
         args.output.write_text(text, encoding="utf-8")

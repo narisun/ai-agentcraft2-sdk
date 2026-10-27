@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Sequence
 from hashlib import sha256
-from typing import TypedDict
+from typing import NotRequired, TypedDict
 
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
 
@@ -37,6 +37,8 @@ class MemoVersion(TypedDict):
     content: str
     message_ids: list[str]
     source_refs: list[str]
+    manifest_id: NotRequired[str]
+    source_ids: NotRequired[list[str]]
 
 
 def merge_memos(existing: list[MemoVersion], added: list[MemoVersion]) -> list[MemoVersion]:

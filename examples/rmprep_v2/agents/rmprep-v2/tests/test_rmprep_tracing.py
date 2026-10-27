@@ -30,7 +30,10 @@ async def test_memo_and_follow_up_share_tool_evidence_and_survive_restart(tmp_pa
     assert requests[2]["messages"][4] == history[0]["messages"][3]
     assert '"covenants": {' in requests[2]["messages"][3]["content"]
     assert '"financials": {' not in requests[2]["messages"][3]["content"]
-    assert '"financials": {' in history[0]["messages"][2]["content"]
+    # The checkpoint holds a reference; the model was shown the whole pack.
+    assert "evidence_reference" in history[0]["messages"][2]["content"]
+    assert '"financials": {' not in history[0]["messages"][2]["content"]
+    assert '"financials": {' in requests[1]["messages"][3]["content"]
     assert requests[2]["messages"][-1]["content"] == QUESTIONS[1]
     assert requests[2]["messages"][-2]["content"].startswith(MEMO)
     memo = history[0]["memos"][0]
