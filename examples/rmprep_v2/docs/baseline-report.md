@@ -83,36 +83,63 @@ deletes saved state; history kept in whole exchanges so a tool call is never spl
 result; one atomic commit of an accepted answer; a deterministic router; and tests that use a
 scripted model against real checkpoints.
 
-These parts depart from it, and each has a fix with a phase and a test:
+These parts depart from it, or are worth changing. Each has a fix with a phase and a test. A
+second pass against the LangGraph documentation (see Sources) corrected some of the first review's
+ratings; the notes say where.
 
-| Departure in rmprep | Why it matters | v2 fix | Phase |
+| In rmprep | What LangGraph's documentation says | v2 fix | Phase |
 | --- | --- | --- | --- |
-| Evidence packs live in `ToolMessage`s in state | State and the checkpoint database grow with data (9.7 MB above) | Store the original outside the graph; the tool node returns a reference and a small summary | V1 |
-| `MemoVersion.message_ids` point at raw messages | Trimming or compacting messages would break a memo | A memo points at a manifest ID in the evidence store | V1 |
-| `uuid4()` and `now()` called inside the node | A replay produces different IDs and times | IDs derive from the request, tool-call and message IDs; the clock stays injected | V1 |
-| One ~130-line `call_model` node does selection, context, generation, validation and commit | Hard to test or observe step by step | Nodes `select`, `build_context`, `generate`, `validate`, `commit`; each one small and tested alone | V3 |
-| The 3-attempt revision loop is a Python `for` inside the node | No checkpoint between attempts; a resume repeats the model calls | Revision is a `validate` to `generate` edge, counted in the request ledger | V3 |
-| Rejected drafts are kept out of state only because the loop is in one node | Moving the loop into the graph would otherwise checkpoint them | Spike first: hold drafts in an untracked or ephemeral channel and confirm no checkpoint contains one | V3 |
-| Both specialists share the parent `State`; `steps()` filters duplicate messages | No private scratch space and noisy streams | The Q&A subgraph gets its own state schema with explicit input and output | V3 |
-| `ValidationFailed` is raised after the retries | The run ends in an error, not an answer | A `limitation` node publishes a safe answer and ends the run normally | V3 |
-| No `recursion_limit` or `RetryPolicy` | Only the SDK budgets (50 model, 100 tool calls) bound the loop | An explicit `recursion_limit` and a `RetryPolicy` on the model and tool nodes, both tested; the 6 tool and 8 model call limits map onto the SDK budget | V3 |
-| Validation is part of `call_model` | A failed check is invisible as a step | `validate` is a node that returns issues; citation and numeric checks plug into it | V4 |
+| Evidence packs live in `ToolMessage`s in state | State is raw data for one thread; cross-thread and cross-subgraph data belongs in a `Store`. Checkpoints accumulate and the docs advise pruning on a schedule (there is no built-in TTL) | Keep the original outside the graph. The tool node returns a reference and a small summary. Tools reach the store by injection (`InjectedStore`), not a global | V1 |
+| `MemoVersion.message_ids` point at raw messages | State should hold what later nodes need, not pointers into history that may be trimmed | A memo points at a manifest ID in the evidence store | V1 |
+| `uuid4()` and `now()` inside the node | A retry or resume re-runs the node from its start, so side effects and IDs must be idempotent | IDs derive from request, tool-call and message IDs; the clock stays injected | V1 |
+| One ~130-line `call_model` node | One job per node; checkpoints are at node boundaries, so small nodes repeat less work after a failure; external calls get their own nodes and policies | Nodes `select`, `build_context`, `generate`, `validate`, `commit` | V3 |
+| A `for` loop of 3 attempts inside the node | Correcting an LLM mistake is an accepted loop: write the error into state and route back with `Command`. The docs do not require the loop to be graph edges | Keep revision, but make it visible: `validate` writes the issues to state (cleared with `Overwrite`) and returns `Command(goto="generate")`. Count each attempt in the request ledger. This is a smaller change than the first review said | V3 |
+| Drafts stay out of state only because the loop is one node | `UntrackedValue` is excluded from checkpoints and reset on resume; the docs show it in TypeScript only | Spike in Python first: hold drafts in an untracked channel and confirm no checkpoint holds one and a resume starts clean | V3 |
+| Both specialists share the parent `State`; `steps()` filters duplicates | Sharing keys and adding the compiled subgraph as a node is a documented pattern. To isolate, wrap the subgraph in a node that maps parent state to its own schema. Input and output schemas limit `invoke` results but do not hide channels from `stream` | Q&A runs behind a wrapper node with its own schema. Do not rely on schemas to hide drafts from streams | V3 |
+| `ValidationFailed` raised after the retries | Unexpected errors may raise; but a failure after retries is expected here. LangGraph 1.2 has a per-node `error_handler` that routes to a recovery branch, and `RemainingSteps` lets a node route to a fallback before the step limit | A `limitation` node publishes a safe answer; route to it from `error_handler` and when `RemainingSteps` runs low | V3 |
+| No `recursion_limit` or `RetryPolicy` | `recursion_limit` is a top-level config key (default 1000 from 1.0.6); exceeding it raises `GraphRecursionError`. `RetryPolicy` and `timeout` are set per node, and `StateGraph.set_node_defaults` applies them to many | Set `recursion_limit` from the call budget, a `RetryPolicy` and `timeout` on the model and tool nodes through `set_node_defaults`, and test each. The 6 tool and 8 model call limits map onto the SDK budget | V3 |
+| Validation is part of `call_model` | Routing decisions belong in nodes with `Command[Literal[...]]` so the flow stays traceable | `validate` is a node; citation and numeric checks plug into it | V4 |
+| `astream(..., subgraphs=True, stream_mode="updates")` | The docs now recommend `stream_events(version="v3")` and `stream.subgraphs` | Keep `astream` for now. Check `stream_events` v3 against LangGraph 1.2.17 when the activity stream is built | V6 |
+
+Where v1 already matches the documentation: state is kept raw and prompts are formatted in the node
+that needs them ("keep state raw, format prompts on demand"); runtime values go in `context_schema`;
+a compiled subgraph with shared keys is added as a node; `ToolNode` runs tool calls in parallel.
+
+Verified in the installed LangGraph 1.2.17: `StateGraph.set_node_defaults`, per-node
+`retry_policy`, `timeout` and `error_handler` on `add_node`, `RemainingSteps`, `Overwrite`,
+`UntrackedValue`, `EphemeralValue`, `Command`, `stream_events`, and the SQLite store module.
+Not verified: that `stream_events` supports `version="v3"` here, and the behaviour of an untracked
+channel in Python.
 
 Decisions this review leaves open:
 
 - **Hand-built loop.** v2 keeps the explicit graph rather than a prebuilt agent loop, because the
   validation, budgets and visibility manifests do not fit one. `langchain` is not installed in
-  this environment, so a prebuilt `create_agent` was not evaluated.
+  this environment, so a prebuilt `create_agent` and its middleware (for example summarization or
+  tool-call limits) were not evaluated. Evaluate them before building the conversation summary.
+- **Evidence store backing.** V1 starts with a spike: can LangGraph's own `Store` (namespaced
+  items with filtered search) hold cards and answer section and reference lookups? Keyword search
+  likely still needs a SQLite FTS5 index of our own. The plan keeps a narrow `EvidenceStore`
+  protocol so either backs it, and tools receive it by injection.
+- **Clarifications.** rmprep answers an ambiguous memo reference with a clarifying message and
+  ends the turn. The docs offer `interrupt()` for user-fixable errors. A chat turn that ends with a
+  question is simpler for Agent Lab, so v2 keeps it.
 - **Memo agent.** The nodes above are written for Q&A first. The memo agent adopts the same nodes
   once Q&A shows they hold, so memo behaviour stays comparable with rmprep until then.
+
+Sources (LangGraph documentation, read 2026-10-27):
+[persistence](https://docs.langchain.com/oss/python/langgraph/persistence),
+[subgraphs](https://docs.langchain.com/oss/python/langgraph/use-subgraphs),
+[thinking in LangGraph](https://docs.langchain.com/oss/python/langgraph/thinking-in-langgraph),
+[graph API](https://docs.langchain.com/oss/python/langgraph/graph-api).
 
 ## Plan for V1 to V4, with the first failing tests
 
 | Phase | Work | First failing tests |
 | --- | --- | --- |
-| V1 | Evidence store protocol with a SQLite and FTS5 implementation; the offloading tool node; memo manifests; deterministic IDs | A stored pack is returned byte for byte; a second write with different content is refused; no checkpoint written during the memo turn holds more than a reference and a small summary; replaying a turn gives the same IDs |
+| V1 | Spike on LangGraph's `Store`, then an evidence store protocol with a SQLite and FTS5 implementation, injected into tools; the offloading tool node; memo manifests; deterministic IDs | A stored pack is returned byte for byte; a second write with different content is refused; no checkpoint written during the memo turn holds more than a reference and a small summary; replaying a turn gives the same IDs |
 | V2 | Evidence cards, the section directory, `search_evidence`, `get_evidence`, `get_memo_section`, `get_analysis_note`; scope and date guards for tools that take only an ID | A card resolves only inside its client, version and thread; a search hit never discloses another client; an ID tool rejects a date that differs from the memo's |
-| V3 | The Q&A graph as small nodes with its own schema; the context assembler with the Q&A allocations; visibility manifest; request ledger; `limitation` node; `recursion_limit` and `RetryPolicy` | Every model request stays under the ceiling; a revision is a graph step and a resumed run keeps its counts; no checkpoint holds a rejected draft; exhausting a budget ends with a limitation answer, not an exception |
+| V3 | The Q&A graph as small nodes behind a wrapper with its own schema; the context assembler with the Q&A allocations; visibility manifest; request ledger; `limitation` node; `recursion_limit`, `RetryPolicy`, `timeout` and `error_handler` | Every model request stays under the ceiling; each revision is counted and visible as a step, and a resumed run keeps its counts; no checkpoint holds a rejected draft; exhausting a budget, or running low on steps, ends with a limitation answer, not an exception |
 | V4 | Citation resolver against the visibility manifest; calculation receipts; numeric warnings in `validate` | A directory-only or unseen citation fails; a derived figure cites its operands; a warning survives reload and copy |
 
 Baseline to beat: a typical Q&A turn near 8k estimated tokens for every question (today 7k to 9k
