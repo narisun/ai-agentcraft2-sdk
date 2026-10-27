@@ -108,6 +108,15 @@ async def test_stream_reports_the_memo_tool_loop_without_repeating_old_messages(
         "memoagent/tools",
         "memoagent/model",
     ]
-    assert [step["node"] for step in second] == ["router", "qnaagent/model"]
-    assert len(second[1]["messages"]) == 1
-    assert second[1]["messages"][0]["content"] == "Explanation"
+    # The memo's own citations are read ahead through the governed tool before the model answers.
+    assert [step["node"] for step in second] == [
+        "router",
+        "qnaagent/select",
+        "qnaagent/prefetch",
+        "qnaagent/tools",
+        "qnaagent/generate",
+        "qnaagent/validate",
+        "qnaagent/commit",
+    ]
+    assert [len(step["messages"]) for step in second] == [0, 0, 1, 1, 0, 0, 1]
+    assert second[-1]["messages"][0]["content"] == "Explanation"

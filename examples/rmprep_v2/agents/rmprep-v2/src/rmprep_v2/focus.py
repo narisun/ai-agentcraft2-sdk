@@ -39,7 +39,7 @@ def conversation_focus(state: State) -> ConversationFocus:
     # Older answers already carry accepted context metadata. A newer Q&A refresh
     # takes precedence over the legacy active_memo_id that used to remain stale.
     for message in reversed(state["messages"]):
-        metadata = message.additional_kwargs.get("rmprep-v2@@context", {})
+        metadata = message.additional_kwargs.get("rmprep_context", {})
         if message.type == "ai" and metadata and not getattr(message, "tool_calls", []):
             if metadata.get("uen") == client and metadata.get("retrieval_date"):
                 date = metadata["retrieval_date"]

@@ -19,7 +19,7 @@ from rmprep_v2 import __main__ as cli
 from rmprep_v2 import service
 from rmprep_v2.context import ContextBudget, ContextBuilder
 from rmprep_v2.service import build_app
-from rmprep_v2.settings import load_context_budget
+from rmprep_v2.settings import QnaLimits, load_context_budget
 
 
 def test_defaults_allow_large_comparisons_with_room_for_new_tools() -> None:
@@ -91,9 +91,14 @@ def _graph_builds_with(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     built: dict[str, Any] = {}
 
     def fake_build_graph(
-        services: Any, tools: Any = (), *, context_builder: ContextBuilder | None = None
+        services: Any,
+        tools: Any = (),
+        *,
+        context_builder: ContextBuilder | None = None,
+        qna_limits: QnaLimits | None = None,
     ) -> str:
         built["context_builder"] = context_builder
+        built["qna_limits"] = qna_limits
         return "graph"
 
     async def no_tools(services: Any) -> tuple[()]:
@@ -172,7 +177,35 @@ def test_importing_the_service_reads_no_context_settings() -> None:
 
 
 @pytest.mark.parametrize("endpoint", ["/invoke", "/invoke/stream"])
-async def test_http_and_streaming_use_the_injected_context_budget(endpoint: str) -> None:
+async def test_http_and_streaming_use_the_injected_qna_limits(endpoint: str) -> None:
+    kit = Fakes(
+        identity=FakeIdentityVerifier({"test-token": Principal(subject="developer", tenant="bank")})
+    )
+    limits = QnaLimits(
+        input_tokens=1_000,
+        output_tokens=100,
+        request_tokens=5_000,
+        question_tokens=30,
+        directory_tokens=30,
+    )
+    async with kit.container() as services:
+        lifecycle = ServiceLifecycle(services.validate)
+        app = await build_app(services, lifecycle, qna_limits=limits)
+        await lifecycle.start()
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app), base_url="http://test"
+        ) as client:
+            response = await client.post(
+                endpoint,
+                json={"input": {"question": "detail " * 100}, "thread_id": "budget"},
+                headers={"authorization": "Bearer test-token"},
+            )
+    # An oversize question is answered with a limitation, and no model is called.
+    assert "The question is too long" in response.text
+    assert all(not model.calls for model in kit.model.models)
+
+
+async def test_the_memo_context_budget_still_governs_the_memo_agent(tmp_path: Path) -> None:
     kit = Fakes(
         identity=FakeIdentityVerifier({"test-token": Principal(subject="developer", tenant="bank")})
     )
@@ -185,9 +218,33 @@ async def test_http_and_streaming_use_the_injected_context_budget(endpoint: str)
             transport=httpx.ASGITransport(app), base_url="http://test"
         ) as client:
             response = await client.post(
-                endpoint,
-                json={"input": {"question": "detail " * 100}, "thread_id": "budget"},
+                "/invoke",
+                json={
+                    "input": {"question": "memo: " + "detail " * 100},
+                    "thread_id": "memo-budget",
+                },
                 headers={"authorization": "Bearer test-token"},
             )
     assert '"error":"invalid"' in response.text.replace(" ", "")
     assert all(not model.calls for model in kit.model.models)
+
+
+async def test_the_service_loads_the_qna_limits_and_refuses_a_malformed_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    file = tmp_path / ".env"
+    file.write_text("RMPREP_QNA_MAX_MODEL_CALLS=3\n", encoding="utf-8")
+    monkeypatch.setattr(service, "ENV_FILE", file)
+    runner = Mock(return_value=0)
+    monkeypatch.setattr(service, "run_agent", runner)
+    built = _graph_builds_with(monkeypatch)
+    assert service.main([]) == 0
+    composed, _ = runner.call_args.args
+    await composed.build_graph(object())
+    assert built["qna_limits"].max_model_calls == 3
+
+    file.write_text("RMPREP_QNA_MAX_MODEL_CALLS=0\n", encoding="utf-8")
+    runner.reset_mock()
+    assert service.main([]) != 0
+    runner.assert_not_called()
+    assert "RMPREP_QNA_MAX_MODEL_CALLS" in capsys.readouterr().err

@@ -47,7 +47,7 @@ def _accepted_update(
     diagnostics: dict[str, object],
 ) -> dict[str, Any]:
     """Commit a checked answer, its context decision and any new immutable memo together."""
-    reply.additional_kwargs["rmprep-v2@@context"] = dict(selection)
+    reply.additional_kwargs["rmprep_context"] = dict(selection)
     update: dict[str, Any] = {
         "messages": [reply],
         "context_diagnostics": diagnostics,

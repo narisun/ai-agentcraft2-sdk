@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterator, Sequence
 from typing import Any
 
 from agentcraft2_core import RequestContext, ServiceContainer
+from agentcraft2_core.adapters.checkpoint_options import SqliteCheckpointOptions
+from agentcraft2_core.contracts import Section
 from langchain_core.messages import HumanMessage
 from langchain_core.tools import BaseTool
+from langchain_core.utils.function_calling import convert_to_openai_tool
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
@@ -15,8 +19,10 @@ from rmprep_v2.artifacts import memo_artifacts
 from rmprep_v2.context import ContextBuilder
 from rmprep_v2.evidence_store import EvidenceStore, SqliteEvidenceStore
 from rmprep_v2.prompts import MEMO_PROMPT, QNA_PROMPT
+from rmprep_v2.qna_graph import build_qna_graph
 from rmprep_v2.retrieval import retrieval_tools
 from rmprep_v2.router import destination, router
+from rmprep_v2.settings import QnaLimits
 from rmprep_v2.specialist import build_specialist
 from rmprep_v2.state import State
 from rmprep_v2.tool_names import RETRIEVAL_TOOL_NAMES
@@ -46,11 +52,26 @@ async def registered_mcp_tools(services: ServiceContainer) -> list[BaseTool]:
 
 
 def _evidence_store(services: ServiceContainer, given: EvidenceStore | None) -> EvidenceStore:
-    """The store the caller gave, or a file beside the checkpoints (memory without a folder)."""
+    """The store the caller gave, or a file beside the checkpoint database.
+
+    Evidence belongs with the checkpoints that point at it, wherever the service or a test put
+    them. Without a SQLite checkpoint database the store is in memory, so a restart cannot leave
+    a checkpoint pointing at evidence that no longer exists unnoticed: the model is told the
+    evidence is missing.
+    """
     if given is not None:
         return given
-    folder = services.config.state_dir
-    return SqliteEvidenceStore(folder / "evidence.sqlite" if folder is not None else ":memory:")
+    checkpoints = services.config.section(Section.CHECKPOINT)
+    if checkpoints.provider == "sqlite":
+        folder = checkpoints.parse_options(SqliteCheckpointOptions).path.parent
+        return SqliteEvidenceStore(folder / "evidence.sqlite")
+    return SqliteEvidenceStore(":memory:")
+
+
+def _definition_tokens(tools: Sequence[BaseTool]) -> int:
+    """Estimated tokens of the tool definitions a model request carries, by the agent's estimate."""
+    text = json.dumps([convert_to_openai_tool(tool) for tool in tools])
+    return -(-len(text.encode("utf-8")) // 3)
 
 
 def build_graph(
@@ -60,6 +81,7 @@ def build_graph(
     context_builder: ContextBuilder | None = None,
     evidence_store: EvidenceStore | None = None,
     offload_evidence: bool = True,
+    qna_limits: QnaLimits | None = None,
 ) -> CompiledStateGraph[Any, Any, Any, Any]:
     """Build the agent graph from governed parts.
 
@@ -71,7 +93,9 @@ def build_graph(
             references. Defaults to ``evidence.sqlite`` in the service's state folder, or
             memory when the service has none.
         offload_evidence: ``False`` keeps results in the conversation, as rmprep does.
-            Only a comparison with the previous behaviour needs it.
+            Only a comparison with the previous behaviour needs it. It also keeps the Q&A
+            agent as one node, because the Q&A graph reads its evidence from the store.
+        qna_limits: What one Q&A question may use; the defaults are the reviewed proposal.
     """
     # Both specialists use the same provider and governed tools, but different prompts.
     evidence = _evidence_store(services, evidence_store) if offload_evidence else None
@@ -86,6 +110,26 @@ def build_graph(
     model = services.model("default")
     memo_model = model.bind_tools(mcp_tools)
     qna_model = model.bind_tools(qna_tools)
+    if evidence is not None:
+        # Small steps with their own limits. Their private state never reaches this graph's.
+        qna_node: Any = build_qna_graph(
+            qna_model,
+            qna_tools,
+            QNA_PROMPT,
+            evidence=evidence,
+            limits=qna_limits or QnaLimits(),
+            tool_tokens=_definition_tokens(qna_tools),
+            now=services.clock.now,
+        )
+    else:
+        qna_node = build_specialist(
+            qna_model,
+            qna_tools,
+            QNA_PROMPT,
+            now=services.clock.now,
+            context_builder=context_builder,
+            evidence=evidence,
+        )
     builder = StateGraph(State, context_schema=RequestContext)
     builder.add_node("router", router)
     builder.add_node(
@@ -100,17 +144,7 @@ def build_graph(
             evidence=evidence,
         ),
     )
-    builder.add_node(
-        "qnaagent",
-        build_specialist(
-            qna_model,
-            qna_tools,
-            QNA_PROMPT,
-            now=services.clock.now,
-            context_builder=context_builder,
-            evidence=evidence,
-        ),
-    )
+    builder.add_node("qnaagent", qna_node)
     builder.add_edge(START, "router")
     builder.add_conditional_edges("router", destination)
     builder.add_edge("memoagent", END)

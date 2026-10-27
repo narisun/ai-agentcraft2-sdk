@@ -77,8 +77,15 @@ CREATE TABLE IF NOT EXISTS notes (
     seq INTEGER NOT NULL,
     PRIMARY KEY (scope, note_id)
 );
+CREATE TABLE IF NOT EXISTS visibility (
+    scope TEXT NOT NULL,
+    key TEXT NOT NULL,
+    sha256 TEXT NOT NULL,
+    body TEXT NOT NULL,
+    PRIMARY KEY (scope, key)
+);
 CREATE VIRTUAL TABLE IF NOT EXISTS cards_fts USING fts5(
-    scope UNINDEXED, card_id UNINDEXED, source_id UNINDEXED, section UNINDEXED, text,
+    scope UNINDEXED, card_id UNINDEXED, source_id UNINDEXED, section UNINDEXED, head, body,
     tokenize = 'porter unicode61'
 );
 """
@@ -109,6 +116,65 @@ _STOP_WORDS = frozenset(
         "its",
         "are",
         "be",
+        "a",
+        "an",
+        "as",
+        "at",
+        "from",
+        "has",
+        "have",
+        "had",
+        "not",
+        "but",
+        "if",
+        "so",
+        "than",
+        "then",
+        "there",
+        "these",
+        "those",
+        "which",
+        "who",
+        "whom",
+        "when",
+        "where",
+        "why",
+        "will",
+        "would",
+        "can",
+        "could",
+        "should",
+        "may",
+        "might",
+        "any",
+        "all",
+        "some",
+        "more",
+        "most",
+        "about",
+        "into",
+        "over",
+        "under",
+        "between",
+        "please",
+        "tell",
+        "show",
+        "give",
+        "explain",
+        "describe",
+        "need",
+        "needs",
+        "needed",
+        "discuss",
+        "discussed",
+        "discussion",
+        "client",
+        "clients",
+        "customer",
+        "memo",
+        "say",
+        "says",
+        "said",
     ]
 )
 # Controlled banking synonyms: a phrase in the question also looks for the term the data uses.
@@ -142,12 +208,16 @@ def fts_query(text: str) -> str:
     return " OR ".join(f'"{word}"' for word in dict.fromkeys(words))
 
 
-def _card_text(card: Mapping[str, Any]) -> str:
-    """What the keyword index holds for one card: its section, reference, names and values."""
-    parts = [str(card["section"]), str(card["source_ref"])]
-    for key, value in card["fields"].items():
-        parts += [key.replace("_", " "), "" if value is None else str(value)]
-    return " ".join(parts)
+def _card_text(card: Mapping[str, Any]) -> tuple[str, str]:
+    """What the keyword index holds for one card: its labels, and separately its values.
+
+    A question names a topic far more often than a value, so a match on the section, the
+    reference or a field name outranks the same word appearing in free text.
+    """
+    head = [str(card["section"]), str(card["source_ref"])]
+    head += [key.replace("_", " ") for key in card["fields"]]
+    body = ["" if value is None else str(value) for value in card["fields"].values()]
+    return " ".join(head), " ".join(body)
 
 
 @dataclass(frozen=True, slots=True)
@@ -294,6 +364,14 @@ class EvidenceStore(Protocol):
         self, scope: str, source_ids: Sequence[str], note_id: str
     ) -> dict[str, Any] | None:
         """One note of these sources, or ``None``."""
+        ...
+
+    async def put_visibility(self, scope: str, key: str, record: Mapping[str, Any]) -> None:
+        """Keep what one model call could see; the same record again is a no-op."""
+        ...
+
+    async def get_visibility(self, scope: str, key: str) -> dict[str, Any] | None:
+        """The record of one model call, or ``None``."""
         ...
 
 
@@ -449,7 +527,7 @@ class SqliteEvidenceStore:
     async def retire_scope(self, scope: str) -> int:
         async with self._session() as connection:
             removed = 0
-            for table in ("manifests", "sources", "cards", "notes", "cards_fts"):
+            for table in ("manifests", "sources", "cards", "notes", "visibility", "cards_fts"):
                 cursor = await connection.execute(f"DELETE FROM {table} WHERE scope = ?", (scope,))
                 removed += cursor.rowcount if table != "cards_fts" else 0
             await connection.commit()
@@ -470,10 +548,11 @@ class SqliteEvidenceStore:
                     "INSERT INTO cards VALUES (?, ?, ?, ?, ?, ?, ?)",
                     (scope, card["card_id"], source_id, card["section"], digest, text, seq),
                 )
+                head, body = _card_text(card)
                 await connection.execute(
-                    "INSERT INTO cards_fts (scope, card_id, source_id, section, text) "
-                    "VALUES (?, ?, ?, ?, ?)",
-                    (scope, card["card_id"], source_id, card["section"], _card_text(card)),
+                    "INSERT INTO cards_fts (scope, card_id, source_id, section, head, body) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (scope, card["card_id"], source_id, card["section"], head, body),
                 )
             for seq, note, text, digest in fresh_notes:
                 await connection.execute(
@@ -532,7 +611,7 @@ class SqliteEvidenceStore:
             ).fetchone()
             rows = await (
                 await connection.execute(
-                    "SELECT c.body, bm25(cards_fts) AS score FROM cards_fts "
+                    "SELECT c.body, bm25(cards_fts, 0.0, 0.0, 0.0, 0.0, 6.0, 1.0) AS score FROM cards_fts "
                     "JOIN cards c ON c.scope = cards_fts.scope AND c.card_id = cards_fts.card_id "
                     f"WHERE {where} ORDER BY score, c.seq LIMIT ? OFFSET ?",
                     [*arguments, max(0, limit), max(0, offset)],
@@ -626,6 +705,32 @@ class SqliteEvidenceStore:
                     "SELECT body FROM notes WHERE scope = ? AND note_id = ? "
                     f"AND source_id IN ({sources})",
                     [scope, note_id, *source_ids],
+                )
+            ).fetchone()
+        return json.loads(row[0]) if row else None
+
+    async def put_visibility(self, scope: str, key: str, record: Mapping[str, Any]) -> None:
+        text = canonical_json(record)
+        digest = _digest(text)
+        async with self._session() as connection:
+            row = await (
+                await connection.execute(
+                    "SELECT sha256 FROM visibility WHERE scope = ? AND key = ?", (scope, key)
+                )
+            ).fetchone()
+            if row is None:
+                await connection.execute(
+                    "INSERT INTO visibility VALUES (?, ?, ?, ?)", (scope, key, digest, text)
+                )
+                await connection.commit()
+            elif row[0] != digest:
+                raise EvidenceConflict(f"visibility record {key} is stored with other content")
+
+    async def get_visibility(self, scope: str, key: str) -> dict[str, Any] | None:
+        async with self._session() as connection:
+            row = await (
+                await connection.execute(
+                    "SELECT body FROM visibility WHERE scope = ? AND key = ?", (scope, key)
                 )
             ).fetchone()
         return json.loads(row[0]) if row else None

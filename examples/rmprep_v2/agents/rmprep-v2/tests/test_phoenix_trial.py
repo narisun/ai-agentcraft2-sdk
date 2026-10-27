@@ -129,9 +129,12 @@ async def test_memo_followups_have_distinct_traces_same_session_and_real_checkpo
             for s in spans
             if s.attributes and s.attributes.get("openinference.span.kind") == "TOOL"
         ]
+        # Each follow-up first reads the cards it will need (the agent's own governed tool).
         assert [s.name for s in tools] == [
             "rmprep-v2-data.get_memo_evidence",
+            "get_evidence",
             "rmprep-v2-data.get_client_records",
+            "get_evidence",
         ]
         generations = [s for s in spans if s.name == "model"]
         assert len(generations) == 5  # one span per provider attempt, not inner/outer duplicates
@@ -139,7 +142,11 @@ async def test_memo_followups_have_distinct_traces_same_session_and_real_checkpo
         assert generations[1].attributes["llm.token_count.prompt"] == 100
         assert generations[1].attributes["llm.token_count.completion"] == 10
         assert generations[1].attributes["llm.token_count.prompt_details.cache_read"] == 60
-        assert all((tool.attributes or {})["agentcraft2.mcp_server"] == SERVER_ID for tool in tools)
+        assert all(
+            (tool.attributes or {})["agentcraft2.mcp_server"] == SERVER_ID
+            for tool in tools
+            if tool.name.startswith(SERVER_ID)
+        )
         text = str([dict(s.attributes or {}) for s in spans])
         assert ("credit_metrics[uen=JONE-0022]" in text) == content
         if content:

@@ -139,7 +139,7 @@ def _same_context(
     ]
     if not answers:
         return False
-    metadata = answers[-1].additional_kwargs.get("rmprep-v2@@context", {})
+    metadata = answers[-1].additional_kwargs.get("rmprep_context", {})
     selected_date = selection["retrieval_date"] or selection["meeting_date"]
     prior_date = metadata.get("retrieval_date") or metadata.get("meeting_date")
     if selected_date and prior_date and selected_date != prior_date:

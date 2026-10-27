@@ -109,9 +109,7 @@ def saved_memo() -> list[AnyMessage]:
         AIMessage(
             MEMO,
             id="memo-answer",
-            additional_kwargs={
-                "rmprep-v2@@context": {"uen": CLIENT, "memo_ids": [], "mode": "new"}
-            },
+            additional_kwargs={"rmprep_context": {"uen": CLIENT, "memo_ids": [], "mode": "new"}},
         ),
     ]
 
@@ -274,7 +272,7 @@ def test_known_alias_retains_bounded_qa_history_without_a_versioned_memo(
             "Other client's answer.",
             id="other-answer",
             additional_kwargs=(
-                {"rmprep-v2@@context": {"uen": "OTHR-0001", "memo_ids": []}}
+                {"rmprep_context": {"uen": "OTHR-0001", "memo_ids": []}}
                 if tagged_other_client
                 else {}
             ),
@@ -475,13 +473,14 @@ async def test_exact_reported_questions_share_memo_evidence_through_the_graph() 
     prompts = kit.model.models[0].calls
     assert '"uen": "CANA-0010"' in str(prompts[1][0].content)  # Lookup binds before retrieval.
     assert memo in [message.content for message in prompts[-1]]
-    source = next(
-        tool_payload(m)
+    # The saved evidence reaches the model as the cards the question needs, read ahead.
+    cards = next(
+        tool_payload(m)["cards"]
         for m in prompts[-1]
-        if isinstance(m, ToolMessage) and "sections" in tool_payload(m)
+        if isinstance(m, ToolMessage) and m.name == "get_evidence"
     )
-    assert list(source["sections"]) == ["relationship"]
-    assert source["sections"]["relationship"]["records"][0]["wallet_share_pct"] == "22.55"
+    assert cards[0]["section"] == "relationship"
+    assert cards[0]["fields"]["wallet_share_pct"] == "22.55"
     assert len(saved.values["memos"]) == 1
     assert saved.values["active_client"] == CLIENT
     assert saved.values["selection"]["mode"] == "snapshot"

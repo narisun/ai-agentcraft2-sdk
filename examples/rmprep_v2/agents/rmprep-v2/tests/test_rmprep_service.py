@@ -116,12 +116,20 @@ async def test_a_streamed_run_sends_each_step_then_the_end() -> None:
     events = [block.split("\n", 1) for block in reply.text.strip().split("\n\n")]
     names = [name.removeprefix("event: ") for name, _ in events]
     data = [json.loads(line.removeprefix("data: ")) for _, line in events]
-    assert names == ["update", "update", "end"]
-    assert data[0]["node"] == "router"
+    assert names == ["update"] * 6 + ["end"]
+    assert [step["node"] for step in data[:6]] == [
+        "router",
+        "qnaagent/select",
+        "qnaagent/prefetch",
+        "qnaagent/generate",
+        "qnaagent/validate",
+        "qnaagent/commit",
+    ]
     assert data[0]["route"] == "qnaagent"
-    assert data[1]["node"] == "qnaagent/model"
-    assert data[1]["messages"][-1]["content"] == "Hello there."
-    assert data[2]["thread_id"] == "th-1"
+    # The draft is checked before anyone sees it: only the accepted answer is a message.
+    assert [step["messages"] for step in data[:5]] == [[], [], [], [], []]
+    assert data[5]["messages"][-1]["content"] == "Hello there."
+    assert data[6]["thread_id"] == "th-1"
 
 
 async def test_a_caller_without_a_valid_token_is_refused_and_nothing_runs() -> None:

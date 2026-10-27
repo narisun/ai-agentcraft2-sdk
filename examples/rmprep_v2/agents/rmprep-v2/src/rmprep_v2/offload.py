@@ -13,7 +13,7 @@ import hashlib
 import json
 import re
 from collections.abc import Awaitable, Callable, Mapping, Sequence
-from typing import Any
+from typing import Any, cast
 
 from agentcraft2_core import RequestContext
 from agentcraft2_core.integrations.langgraph import current_request_context
@@ -25,6 +25,7 @@ from rmprep_v2.cards import build_cards
 from rmprep_v2.evidence_store import EvidenceStore, canonical_json, source_id
 from rmprep_v2.response_review import EVIDENCE_TOOLS, tool_payload
 from rmprep_v2.state import State
+from rmprep_v2.tool_names import RETRIEVAL_TOOL_NAMES
 
 __all__ = [
     "SOURCE_KEY",
@@ -89,7 +90,22 @@ def summarize(payload: Mapping[str, Any]) -> dict[str, Any]:
         ]
     if isinstance(payload.get("records"), list):
         summary["records"] = len(payload["records"])
+    for key in ("cards", "results"):
+        if isinstance(payload.get(key), list):
+            summary[key] = len(payload[key])
     return summary
+
+
+def _framed_payload(message: ToolMessage) -> dict[str, Any]:
+    """The JSON object a framed result carries, whichever tool produced it."""
+    content = message.content
+    if not isinstance(content, str) or not content.startswith("<untrusted_tool_result"):
+        return {}
+    try:
+        value = json.loads(content.split(">\n", 1)[1].rsplit("\n</untrusted_tool_result>", 1)[0])
+    except (ValueError, IndexError):
+        return {}
+    return value if isinstance(value, dict) else {}
 
 
 def _label(message: ToolMessage) -> str:
@@ -137,19 +153,29 @@ def offloading(
         kept: list[AnyMessage] = []
         for message in result.get("messages", []):
             payload = tool_payload(message) if isinstance(message, ToolMessage) else {}
+            # What the agent's own retrieval tools return is also kept out of the checkpoint:
+            # a read-ahead of a few cards per question would otherwise add up over a thread.
+            retrieval = isinstance(message, ToolMessage) and message.name in RETRIEVAL_TOOL_NAMES
+            if retrieval:
+                payload = _framed_payload(cast(ToolMessage, message))
             call = asked.get(getattr(message, "tool_call_id", None))
-            if (
-                call is None
-                or message.name not in EVIDENCE_TOOLS
-                or not ("sections" in payload or "records" in payload)
-            ):
+            offloadable = (
+                bool(payload)
+                if retrieval
+                else (
+                    message.name in EVIDENCE_TOOLS
+                    and ("sections" in payload or "records" in payload)
+                )
+            )
+            if call is None or not offloadable:
                 kept.append(message)
                 continue
             label = _label(message)
             identity = source_id(label, call["args"], payload)
             await store.put_source(scope, identity, payload, tool=label, arguments=call["args"])
-            cards, notes = build_cards(identity, payload)
-            await store.put_cards(scope, identity, cards, notes)
+            if not retrieval:
+                cards, notes = build_cards(identity, payload)
+                await store.put_cards(scope, identity, cards, notes)
             kept.append(_reference(message, payload, identity, label))
         return {**result, "messages": kept}
 

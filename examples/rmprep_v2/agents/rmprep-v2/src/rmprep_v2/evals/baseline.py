@@ -72,7 +72,8 @@ ANSWERS = (
     "Source: credit_exceptions[exception_id=CE-JONE-001].",
     f"The most urgent item is the recorded covenant verdict: verify cure status. Source: {_DSCR}.",
     f"Two credit exceptions are past their recorded due dates; confirm owners. Sources: {_EXCEPTIONS}.",
-    f"The memo flags covenant failures and overdue items. Verify cure status with Credit. Source: {_DSCR}.",
+    "The memo flags covenant failures and overdue items. Verify cure status with Credit. "
+    "Source: credit_metrics[uen=JONE-0022].",
 )
 
 

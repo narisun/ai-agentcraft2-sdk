@@ -187,7 +187,7 @@ def test_original_lookup_is_pinned_across_long_discussion_and_legacy_failed_answ
                 "Long discussion. " * 100,
                 id=f"answer-{index}",
                 additional_kwargs={
-                    "rmprep-v2@@context": {"client_uens": list(CLIENTS), "memo_ids": []}
+                    "rmprep_context": {"client_uens": list(CLIENTS), "memo_ids": []}
                 },
             ),
         ]
@@ -197,7 +197,7 @@ def test_original_lookup_is_pinned_across_long_discussion_and_legacy_failed_answ
         AIMessage(
             "Which second client?",
             id="failed-answer",
-            additional_kwargs={"rmprep-v2@@context": {"uen": "CANA-0010", "memo_ids": []}},
+            additional_kwargs={"rmprep_context": {"uen": "CANA-0010", "memo_ids": []}},
         ),
     ]
     original = deepcopy(history)
@@ -221,7 +221,7 @@ def test_default_budget_keeps_large_comparison_in_a_long_thread_without_splittin
             AIMessage(
                 "Earlier discussion. " * 120,
                 id=f"old-answer-{index}",
-                additional_kwargs={"rmprep-v2@@context": selection},
+                additional_kwargs={"rmprep_context": selection},
             ),
         ]
     comparison: list[AnyMessage] = [
@@ -248,7 +248,7 @@ def test_default_budget_keeps_large_comparison_in_a_long_thread_without_splittin
         )
     comparison.append(
         AIMessage(
-            COMPARISON, id="comparison-answer", additional_kwargs={"rmprep-v2@@context": selection}
+            COMPARISON, id="comparison-answer", additional_kwargs={"rmprep_context": selection}
         )
     )
     assert 6_000 < estimate_tokens(comparison) < 96_000
@@ -334,7 +334,7 @@ async def test_discovery_comparison_restart_and_isolation_with_real_mcp_csv(
             with bind_request_context(caller):
                 follow_up = await graph.aget_state(services.invocation(caller)["config"])
             assert follow_up.values["messages"][:-2] == saved.values["messages"]
-            assert follow_up.values["context_diagnostics"]["recent_token_budget"] == 96_000
+            assert follow_up.values["context_diagnostics"]["input_token_ceiling"] == 40_000
             assert_complete_tool_pairs(follow_up.values["messages"])
             for isolated in [
                 replace(caller, thread_id="other-thread"),

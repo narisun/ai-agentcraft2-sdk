@@ -31,19 +31,27 @@ from agentcraft2_core.observability.inspection import LocalTurnInspector
 
 from rmprep_v2.context import ContextBuilder
 from rmprep_v2.graph import APPLICATION, build_graph, registered_mcp_tools, response, steps
-from rmprep_v2.settings import ENV_FILE, load_context_budget
+from rmprep_v2.settings import ENV_FILE, QnaLimits, load_context_budget, load_qna_limits
 
 __all__ = ["SERVICE", "build_app", "main"]
 
 
 def _build_graph_with(
-    contexts: ContextBuilder | None,
+    contexts: ContextBuilder | None, limits: QnaLimits | None = None
 ) -> Callable[[ServiceContainer], Awaitable[Any]]:
-    """The graph builder for one context policy; ``None`` is no policy."""
+    """The graph builder for one context policy and one set of Q&A limits.
+
+    ``None`` is no memo-context policy, and the default Q&A limits.
+    """
 
     async def build(services: ServiceContainer) -> Any:
         # Admission stays closed until discovery and graph compilation succeed.
-        return build_graph(services, await registered_mcp_tools(services), context_builder=contexts)
+        return build_graph(
+            services,
+            await registered_mcp_tools(services),
+            context_builder=contexts,
+            qna_limits=limits,
+        )
 
     return build
 
@@ -54,7 +62,9 @@ async def _build_graph(services: ServiceContainer) -> Any:
     # surfaces a malformed budget during graph preparation, after the listener has
     # started; only ``main`` is fail-fast. It loads the settings first, so a malformed
     # value fails before anything starts, and replaces this builder with the loaded budget.
-    return await _build_graph_with(ContextBuilder(load_context_budget(ENV_FILE)))(services)
+    return await _build_graph_with(
+        ContextBuilder(load_context_budget(ENV_FILE)), load_qna_limits(ENV_FILE)
+    )(services)
 
 
 async def _stream(
@@ -126,6 +136,7 @@ async def build_app(
     lifecycle: ServiceLifecycle,
     *,
     context_builder: ContextBuilder | None = None,
+    qna_limits: QnaLimits | None = None,
     outcomes: OutcomeJournal | None = None,
     inspector: TurnInspector | None = None,
     tracing: AgentTracing | None = None,
@@ -143,6 +154,7 @@ async def build_app(
             callback must start and validate it before graph preparation runs.
         lifecycle: Receives deferred preparation before serving starts.
         context_builder: Optional context policy, shared by normal and streamed requests.
+        qna_limits: Optional Q&A limits; the defaults apply when omitted.
         outcomes: Optional durable outcome journal; see ``SERVICE.outcomes``.
         inspector: Optional diagnostic reader; local services otherwise use their configured
             trace/audit files and graph. Deployed services must inject an authorized reader.
@@ -155,7 +167,7 @@ async def build_app(
 
     service = dataclasses.replace(
         SERVICE,
-        build_graph=_build_graph_with(context_builder),
+        build_graph=_build_graph_with(context_builder, qna_limits),
         app_kwargs={**dict(SERVICE.app_kwargs), "outcomes": outcomes},
         app_extras=extras,
     )
@@ -163,12 +175,15 @@ async def build_app(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Serve until stopped; a malformed context budget fails before anything starts."""
+    """Serve until stopped; a malformed context or Q&A setting fails before anything starts."""
     try:
         contexts = ContextBuilder(load_context_budget(ENV_FILE))
+        limits = load_qna_limits(ENV_FILE)
     except ConfigurationError as error:
         return report_error(f"{APPLICATION}-serve", error, details=False)
-    return run_agent(dataclasses.replace(SERVICE, build_graph=_build_graph_with(contexts)), argv)
+    return run_agent(
+        dataclasses.replace(SERVICE, build_graph=_build_graph_with(contexts, limits)), argv
+    )
 
 
 if __name__ == "__main__":

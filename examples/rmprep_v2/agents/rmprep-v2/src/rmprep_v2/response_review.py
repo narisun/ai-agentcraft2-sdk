@@ -273,7 +273,10 @@ def evidence_references(messages: Sequence[AnyMessage]) -> tuple[set[str], bool]
             # Denials and plain text tool failures are not evidence records.
             continue
         references.update(found)
-        fresh.update(found)
+        # Records read ahead for the model are citable, but they are not retrieval the model
+        # chose, so they do not oblige it to cite.
+        if not str(getattr(message, "tool_call_id", "")).startswith("prefetch-"):
+            fresh.update(found)
     return references, bool(fresh)
 
 

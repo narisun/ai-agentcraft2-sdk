@@ -22,10 +22,12 @@ from rmprep_v2.tool_names import EVIDENCE_TOOL_NAMES, RETRIEVAL_TOOL_NAMES
 
 __all__ = [
     "EVIDENCE_TOOL_NAMES",
+    "MAX_IDS",
     "RETRIEVAL_TOOL_NAMES",
     "get_analysis_note",
     "get_evidence",
     "get_memo_section",
+    "memo_directory",
     "retrieval_tools",
     "search_evidence",
     "selected_memos",
@@ -334,3 +336,48 @@ def retrieval_tools(store: EvidenceStore) -> list[BaseTool]:
         return await get_analysis_note(store, evidence_scope(), selected_memos(state), note_id)
 
     return [search_tool, evidence_tool, section_tool, note_tool]
+
+
+async def memo_directory(
+    store: EvidenceStore, scope: str, memos: Sequence[Memo], *, cap: int = 2_000
+) -> dict[str, Any] | None:
+    """A short map of the selected memos' stored evidence, or ``None`` when none is stored.
+
+    It names sections, record counts, analysis notes and the evidence limits. It holds no
+    figure a reader could cite, and it stays under ``cap`` estimated tokens by dropping notes.
+    """
+    entries: list[dict[str, Any]] = []
+    for memo in memos:
+        sources = list(memo.get("source_ids", []))
+        if not sources:
+            continue
+        sections = await store.list_sections(scope, sources)
+        notes = await store.list_notes(scope, sources)
+        payload = await store.get_source(scope, sources[0]) or None
+        facts = payload.payload if payload is not None else {}
+        entries.append(
+            {
+                "memo_id": memo["memo_id"],
+                "as_of": memo.get("meeting_date"),
+                "sections": {name: {"cards": count} for name, count in sections.items()},
+                "missing_sections": list(facts.get("missing_sections", [])),
+                "notes": [
+                    {"note_id": n["note_id"], "code": n["code"], "priority": n["priority"]}
+                    for n in notes
+                ],
+                "limitations": list(facts.get("limitations", [])),
+            }
+        )
+    if not entries:
+        return None
+    shown: dict[str, Any] = entries[0] if len(entries) == 1 else {"memos": entries}
+    omitted = 0
+    while json_tokens(shown) > cap:
+        holders = [shown] if len(entries) == 1 else shown["memos"]
+        longest = max(holders, key=lambda entry: len(entry["notes"]))
+        if not longest["notes"]:
+            break
+        longest["notes"].pop()
+        omitted += 1
+        shown["notes_omitted"] = omitted
+    return shown

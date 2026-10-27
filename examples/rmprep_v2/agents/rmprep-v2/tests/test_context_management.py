@@ -219,7 +219,7 @@ def test_long_discussion_is_bounded_without_losing_selected_memo_or_tool_pairs()
                 AIMessage(
                     "Background answer " * 100,
                     id=f"a-{index}",
-                    additional_kwargs={"rmprep-v2@@context": selection},
+                    additional_kwargs={"rmprep_context": selection},
                 ),
             ]
         )

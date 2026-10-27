@@ -147,3 +147,15 @@ async def test_retiring_a_scope_removes_only_that_scope(store: SqliteEvidenceSto
     assert await store.retire_scope(SCOPE) == 2
     assert await store.count_sources(SCOPE) == 0
     assert await store.count_sources(OTHER) == 1
+
+
+async def test_a_visibility_record_is_kept_once_per_scope(store: SqliteEvidenceStore) -> None:
+    record = {"reply_id": "ai-1", "model_call": 1, "visible_refs": ["covenants[name=DSCR]"]}
+    await store.put_visibility(SCOPE, "vis-1", record)
+    await store.put_visibility(SCOPE, "vis-1", dict(record))
+    assert await store.get_visibility(SCOPE, "vis-1") == record
+    assert await store.get_visibility(OTHER, "vis-1") is None
+    with pytest.raises(EvidenceConflict):
+        await store.put_visibility(SCOPE, "vis-1", {**record, "model_call": 2})
+    assert await store.retire_scope(SCOPE) == 1
+    assert await store.get_visibility(SCOPE, "vis-1") is None

@@ -277,3 +277,107 @@ if an enterprise deployment wants that backend, because the protocol is six meth
   measuring storage, not for comparing answers.
 - Follow-ups such as "Explain the second one." need the conversation to form a query; that is
   V3's typed focus and query rewriting.
+
+## V3 results: the Q&A agent as small graph steps
+
+### Spike: private keys, untracked drafts and handlers (LangGraph 1.2.17)
+
+A scratch graph confirmed what the plan needed before any code was written:
+
+| Question | Result |
+| --- | --- |
+| Can a subgraph keep keys the parent never sees? | Yes. A key that exists only in the subgraph's schema is absent from the parent's result and state, so no wrapper node is needed. This corrects the earlier plan, which asked for a wrapper |
+| Does an `UntrackedValue` keep a draft out of checkpoints? | Yes. After a rejected draft and a retry, no checkpoint or write row held the draft's text |
+| Does `Command(goto=...)` with a cleared issues list work for a revision loop? | Yes |
+| Does `RemainingSteps` let a node route to a fallback instead of raising? | Yes |
+| Does a node `error_handler` route a failure to a recovery node? | Yes |
+
+### What was built
+
+- [qna_graph.py](../agents/rmprep-v2/src/rmprep_v2/qna_graph.py): `select`, `prefetch`, `generate`,
+  `validate`, `tools`, `commit` and `limitation`, built as one node of the agent graph with its
+  own schema. The draft and the request it came from sit in an untracked channel. A revision is a
+  `validate` to `generate` step with the issues in state; a tool request is a `validate` to
+  `tools` step. The memo agent is unchanged.
+- **A limit ends in an answer.** `limitation` returns a fixed text for the reason (`validation_failed`,
+  `model_calls`, `tool_calls`, `tokens`, `deadline`, `context_too_large`, `question_too_large`,
+  `no_progress`, `steps`, `model_failed`, `tool_failed`). It repeats no draft and no error message.
+  A node `error_handler` routes model and tool failures there, and `RemainingSteps` routes there
+  before the step limit. A policy denial, a platform budget error, a credentials error or a
+  configuration error is re-raised, so the caller still sees a refusal as a refusal.
+- [qna_ledger.py](../agents/rmprep-v2/src/rmprep_v2/qna_ledger.py): a per-question ledger in graph
+  state. Every model attempt is reserved (planned input plus maximum output) before it is sent, so a
+  call over a limit is never made. Reported usage replaces the reservation; missing usage keeps it.
+  Limits are checked in a fixed order, so the first reached wins: deadline, model attempts, request
+  size, cumulative tokens; tool calls and repeats are checked before a tool runs.
+- [qna_context.py](../agents/rmprep-v2/src/rmprep_v2/qna_context.py): the assembler. The request
+  holds the instructions, a block of stable context (the memo selection and the evidence directory),
+  a block that moves (output budget, older-topic summary), the memo request and text, recent complete
+  exchanges within their budget, and the question with this question's tool results. History shrinks
+  first when the request is too large; older tool results of the question become stubs next; a memo is
+  never cut, so one that cannot fit stops the turn. Each model call writes a visibility record (the
+  references the model could see) to the evidence store.
+- **Reading ahead.** `prefetch` reads the search hits for the question and the records the memo
+  itself cites, through the governed `get_evidence` tool, before the model is asked. Without it a
+  follow-up could not cite anything it had not asked for, because the evidence exchange no longer sits
+  in the prompt. The read is authorized, audited and counted against the tool limit, and it does not
+  oblige the answer to cite (only a lookup the model chose does).
+- The agent's own retrieval results are kept as references in the checkpoint too, like the data
+  results, so reading ahead does not add them to every later checkpoint.
+- Settings: `RMPREP_QNA_*` for each limit in [settings.py](../agents/rmprep-v2/src/rmprep_v2/settings.py),
+  validated at startup (a misspelled or malformed name stops the service), with the defaults of the
+  reviewed proposal. `RMPREP_QNA_PREFETCH_CARDS=0` turns the read-ahead off.
+
+### Decisions the documentation and the SDK forced
+
+- **No LangGraph `RetryPolicy` on the model node.** The SDK's model and tool pipelines already retry
+  a transient failure at their innermost stage, so a node retry would multiply attempts. A
+  `RetryPolicy` applies only to the `tools` node, for `sqlite3.OperationalError` (a locked evidence
+  database). The node `timeout` is the request's time limit.
+- **Gap: the SDK's physical retries are invisible to the ledger.** They happen inside one governed
+  call, so a retried model call counts once. Closing this needs the SDK's retry count in the call
+  result or a limit on it; it is not done here.
+- **The step limit lives on the Q&A graph.** `with_config(recursion_limit=...)` on the subgraph limits
+  it without changing the memo agent's loop. A test shows a small limit ends in a `steps` limitation.
+
+### Measured, same scripted conversation (offloaded)
+
+| | rmprep behaviour | V1 | V3 |
+| --- | --- | --- | --- |
+| Q&A turn, model input | 7.4k to 30.4k | 7.1k to 24.8k | 7.8k to 17.9k |
+| Checkpoint state after 13 turns | 85.1 KB | 15.8 KB | 28.9 KB |
+| Checkpoint database after 13 turns | 9.6 MB | 2.5 MB | 4.9 MB |
+| Questions that send the whole evidence pack | 6 of 12 | 6 of 12 | none |
+
+- The worst case fell by 40% and no question sends the whole pack, but a typical turn is not 8k: it
+  settles near 16k to 18k. The first Q&A turn is 7.8k; the rest carry the earlier turns' cards in
+  recent history (about 7k to 8k of the 8k allowance) on top of a 5.9k system block (the instructions
+  plus the directory). The next candidate is to stub the results of earlier exchanges, which can be
+  read again.
+- The database is twice V1's because small nodes checkpoint more often: each step stores the whole
+  state again. State growth is about 2 KB a turn. Pruning and retention are still open (D-06).
+
+### Findings along the way
+
+- The copy script had turned the `rmprep_context` metadata key into `rmprep-v2@@context`. It was used
+  consistently, so nothing failed, but it would have been written into checkpoints. Fixed.
+- Tests shared one evidence file in the workspace folder, because the test configuration redirects the
+  checkpoint database but not the service's state folder. The store now sits beside the checkpoint
+  database, wherever that is, and tests no longer write into the workspace.
+- The first search ranked free-text activity notes above the covenant cards for "Which covenants need
+  discussion for this client?". Words such as "discussion" and "client" are now stop words, and a match
+  on a label (section, reference, field name) is weighted over the same word in a value.
+- Several earlier tests encoded rmprep's behaviour: the follow-up prompt held the whole evidence
+  exchange, a failed answer raised, and the Q&A budget was the memo context budget. They now assert the
+  new behaviour: cards read ahead, a limitation answer, and `RMPREP_QNA_*` limits. The memo agent still
+  uses `RMPREP_CONTEXT_*`.
+
+### Not done in V3
+
+- A resume in the middle of a turn keeping its counts. The ledger is in checkpointed graph state and
+  the draft is deliberately not, so `validate` asks again when it finds none; no test crashes a turn to
+  prove it.
+- Typed focus and query rewriting. A follow-up such as "Explain the second one." searches on its own
+  words and reads ahead only what the memo cites.
+- Stubbing old tool results in history, the memo agent's move to the same nodes, and the answer
+  validators' use of the visibility record (V4).

@@ -404,7 +404,8 @@ async def test_the_model_searches_reads_a_section_and_cites_a_stored_card(tmp_pa
             questions=(MEMO_REQUEST, "Explain the DSCR covenant in that memo."),
         )
     assert str(run.messages[-1].content) == final
-    tools = [m for m in run.messages if isinstance(m, ToolMessage)]
+    # The checkpoint holds references; the model's last request shows the results themselves.
+    tools = [m for m in run.prompts[-1] if isinstance(m, ToolMessage)]
     assert [m.name for m in tools[-2:]] == ["search_evidence", "get_memo_section"]
     found, section = body_of(tools[-2]), body_of(tools[-1])
     assert found["status"] == "ok"
@@ -425,7 +426,7 @@ async def test_a_card_id_the_memo_does_not_hold_is_reported_not_guessed(tmp_path
             store=store,
             questions=(MEMO_REQUEST, "Explain the DSCR covenant in that memo."),
         )
-    result = body_of([m for m in run.messages if isinstance(m, ToolMessage)][-1])
+    result = body_of([m for m in run.prompts[-1] if isinstance(m, ToolMessage)][-1])
     assert result["cards"] == []
     assert result["not_found"] == ["c-invented"]
 
@@ -446,3 +447,48 @@ def test_a_model_is_shown_no_scope_state_or_date_arguments() -> None:
         "get_memo_section": {"section", "memo_id", "offset"},
         "get_analysis_note": {"note_id"},
     }
+
+
+# --- the directory ------------------------------------------------------------------------------
+
+
+async def test_the_directory_names_sections_and_notes_without_facts(
+    store: SqliteEvidenceStore,
+) -> None:
+    from rmprep_v2.retrieval import memo_directory
+
+    shown = await memo_directory(store, SCOPE, [A])
+    assert shown is not None
+    assert shown["memo_id"] == A["memo_id"]
+    assert shown["sections"] == {
+        "covenants": {"cards": 2},
+        "working_capital": {"cards": 2},
+        "facilities": {"cards": 1},
+    }
+    assert [note["code"] for note in shown["notes"]] == ["COVENANT_BREACH_RISK"]
+    assert "1.08" not in str(shown), "the directory carries no figure a reader could cite"
+    assert json_tokens(shown) <= 2_000
+
+
+async def test_the_directory_of_two_memos_keeps_them_apart(store: SqliteEvidenceStore) -> None:
+    from rmprep_v2.retrieval import memo_directory
+
+    shown = await memo_directory(store, SCOPE, [A, B])
+    assert shown is not None
+    assert [entry["memo_id"] for entry in shown["memos"]] == [A["memo_id"], B["memo_id"]]
+
+
+async def test_a_memo_without_stored_evidence_has_no_directory(store: SqliteEvidenceStore) -> None:
+    from rmprep_v2.retrieval import memo_directory
+
+    assert await memo_directory(store, SCOPE, [{"memo_id": "memo-x", "version": 1}]) is None
+    assert await memo_directory(store, SCOPE, []) is None
+
+
+async def test_the_directory_drops_notes_to_fit_its_cap(store: SqliteEvidenceStore) -> None:
+    from rmprep_v2.retrieval import memo_directory
+
+    shown = await memo_directory(store, SCOPE, [A], cap=80)
+    assert shown is not None
+    assert shown["notes"] == []
+    assert shown["notes_omitted"] == 1

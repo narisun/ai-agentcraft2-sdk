@@ -83,7 +83,8 @@ async def test_an_empty_query_returns_nothing_and_says_why(store: SqliteEvidence
 
 def test_the_fts_query_keeps_words_and_drops_syntax() -> None:
     assert fts_query("DSCR") == '"dscr"'
-    assert fts_query('a "b" OR c*') == '"a" OR "b" OR "c"'
+    assert fts_query('alpha "beta" OR gamma*') == '"alpha" OR "beta" OR "gamma"'
+    assert fts_query("Which covenants need discussion for this client?") == '"covenants"'
     assert fts_query("") == ""
     assert '"dscr"' in fts_query("debt service coverage")
 

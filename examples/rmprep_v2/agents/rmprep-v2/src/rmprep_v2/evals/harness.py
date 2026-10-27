@@ -25,7 +25,8 @@ from langchain_core.messages import AnyMessage
 
 from rmprep_v2.evals.packs import WORKSPACE
 from rmprep_v2.evidence_store import EvidenceStore
-from rmprep_v2.graph import APPLICATION, answer, build_graph
+from rmprep_v2.graph import APPLICATION, build_graph, steps
+from rmprep_v2.settings import QnaLimits
 from rmprep_v2_data import SERVER_ID, build_server
 
 __all__ = [
@@ -34,6 +35,7 @@ __all__ = [
     "MEMO_REQUEST",
     "Run",
     "checkpoint_bytes",
+    "checkpoint_contains",
     "converse",
     "scope_of",
 ]
@@ -55,6 +57,10 @@ class Run:
     checkpoint_bytes: int
     store: EvidenceStore | None
     thread: str
+    nodes: list[str]
+    """The graph nodes that ran for the last question, in order."""
+    diagnostics: dict[str, Any]
+    database: Path
 
 
 def checkpoint_bytes(database: Path) -> int:
@@ -67,6 +73,18 @@ def checkpoint_bytes(database: Path) -> int:
             ).fetchone()
             total += int(row[0])
     return total
+
+
+def checkpoint_contains(database: Path, text: str) -> int:
+    """How many checkpoint rows hold ``text``: a rejected draft must be in none."""
+    needle = text.encode("utf-8")
+    found = 0
+    with sqlite3.connect(database) as connection:
+        for table, column in (("checkpoints", "checkpoint"), ("writes", "value")):
+            for (blob,) in connection.execute(f"SELECT {column} FROM {table}"):
+                if blob is not None and needle in bytes(blob):
+                    found += 1
+    return found
 
 
 async def scope_of(state_dir: Path, thread: str) -> str:
@@ -86,6 +104,7 @@ async def converse(
     offload: bool = True,
     questions: tuple[str, ...] = (MEMO_REQUEST,),
     thread: str = "th-1",
+    limits: QnaLimits | None = None,
 ) -> Run:
     """Ask each question in turn on one thread; the model answers from ``replies`` in order."""
     agent_config = replace(
@@ -101,10 +120,15 @@ async def converse(
             agent_config, scripted_providers(*replies), mcp_connector=connector
         ) as services:
             tools = await services.mcp_tools(SERVER_ID)
-            graph = build_graph(services, tools, evidence_store=store, offload_evidence=offload)
+            graph = build_graph(
+                services, tools, evidence_store=store, offload_evidence=offload, qna_limits=limits
+            )
             caller = await services.authenticate(None, application=APPLICATION, thread_id=thread)
+            nodes: list[str] = []
             for question in questions:
-                await answer(graph, services, caller, question)
+                nodes = []
+                async for step in steps(graph, services, caller, question):
+                    nodes.append(step["node"])
             with bind_request_context(caller):
                 saved = await graph.aget_state(services.invocation(caller)["config"])
             prompts = [
@@ -118,4 +142,7 @@ async def converse(
                 checkpoint_bytes=checkpoint_bytes(database),
                 store=store,
                 thread=thread,
+                nodes=nodes,
+                diagnostics=dict(saved.values.get("context_diagnostics", {})),
+                database=database,
             )

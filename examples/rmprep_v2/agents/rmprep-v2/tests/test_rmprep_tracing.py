@@ -14,7 +14,8 @@ from rmprep_v2.graph import APPLICATION, answer, build_graph
 async def test_memo_and_follow_up_share_tool_evidence_and_survive_restart(tmp_path: Path) -> None:
     history = await run_demo(tmp_path)
     assert [turn["route"] for turn in history] == ["memoagent", "qnaagent"]
-    assert [len(turn["messages"]) for turn in history] == [4, 8]
+    # The follow-up adds the question, the cards read ahead, the model's own lookup and its answer.
+    assert [len(turn["messages"]) for turn in history] == [4, 10]
     assert {turn["thread_id"] for turn in history} == {"jone-0022-meeting"}
     assert history[0]["request_id"] != history[1]["request_id"]
     assert history[1]["messages"][:4] == history[0]["messages"]
@@ -25,22 +26,24 @@ async def test_memo_and_follow_up_share_tool_evidence_and_survive_restart(tmp_pa
     assert [event["event"] for event in events] == ["model.request", "model.response"] * 4
     requests = events[::2]
     assert [len(event["messages"]) for event in requests] == [2, 4, 6, 8]
-    # Q&A gets the original memo and a projection of its original covenant evidence.
-    assert requests[2]["messages"][1:3] == history[0]["messages"][:2]
-    assert requests[2]["messages"][4] == history[0]["messages"][3]
-    assert '"covenants": {' in requests[2]["messages"][3]["content"]
-    assert '"financials": {' not in requests[2]["messages"][3]["content"]
+    # Q&A gets the memo request and the memo, then the question and the cards read ahead for it.
+    assert requests[2]["messages"][1] == history[0]["messages"][0]
+    assert requests[2]["messages"][2] == history[0]["messages"][3]
+    assert requests[2]["messages"][3]["content"] == QUESTIONS[1]
+    cards = requests[2]["messages"][5]
+    assert cards["tool_call_id"].startswith("prefetch-")
+    assert "FAC000000130" in cards["content"]
+    assert '"financials"' not in cards["content"]
     # The checkpoint holds a reference; the model was shown the whole pack.
     assert "evidence_reference" in history[0]["messages"][2]["content"]
     assert '"financials": {' not in history[0]["messages"][2]["content"]
     assert '"financials": {' in requests[1]["messages"][3]["content"]
-    assert requests[2]["messages"][-1]["content"] == QUESTIONS[1]
-    assert requests[2]["messages"][-2]["content"].startswith(MEMO)
+    assert requests[2]["messages"][2]["content"].startswith(MEMO)
     memo = history[0]["memos"][0]
     assert memo["uen"] == "JONE-0022" and memo["meeting_date"] == "2026-08-03"
     assert history[1]["context_diagnostics"]["memo_ids"] == [memo["memo_id"]]
-    assert history[1]["context_diagnostics"]["estimated_input_tokens"] > 0
-    assert '"estimated_input_tokens"' not in str(requests[2]["messages"][0]["content"])
+    assert history[1]["context_diagnostics"]["planned_input_tokens"] > 0
+    assert '"planned_input_tokens"' not in str(requests[2]["messages"][0]["content"])
     for request_index, source in [(1, "credit_metrics[uen=JONE-0022]"), (3, "FAC000000130")]:
         tool_result = requests[request_index]["messages"][-1]
         preceding_call = events[2 * request_index - 1]["response"]["tool_calls"][0]
