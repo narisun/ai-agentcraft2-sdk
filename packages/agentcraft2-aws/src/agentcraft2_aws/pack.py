@@ -32,7 +32,7 @@ from agentcraft2_aws.identity_agentcore import (
     AgentCoreRuntimeIdentityOptions,
     ExchangingAgentCoreRuntimeIdentity,
 )
-from agentcraft2_aws.model_bedrock import BedrockChatModelProvider
+from agentcraft2_aws.model_bedrock import BedrockChatModelProvider, BedrockModelOptions
 from agentcraft2_aws.registry_s3 import S3RegistryOptions, S3RegistrySource
 from agentcraft2_aws.secrets_manager import SecretsManagerOptions, SecretsManagerProvider
 from agentcraft2_aws.session import AwsSessionFactory
@@ -41,7 +41,6 @@ from agentcraft2_core.contracts import (
     CheckpointBackend,
     ConfigurationError,
     DeploymentEnv,
-    NoOptions,
     Profile,
 )
 from agentcraft2_core.kit import (
@@ -172,7 +171,9 @@ def register_aws_adapters(
     shared = _Sessions(sessions)
 
     def bedrock_model(context: BuildContext) -> BedrockChatModelProvider:
-        return BedrockChatModelProvider(shared.get(context))
+        return BedrockChatModelProvider(
+            shared.get(context), options=context.selection.parse_options(BedrockModelOptions)
+        )
 
     def secrets_manager(context: BuildContext) -> SecretsManagerProvider:
         options = context.selection.parse_options(SecretsManagerOptions)
@@ -251,7 +252,7 @@ def register_aws_adapters(
         MODEL,
         "bedrock",
         bedrock_model,
-        options=NoOptions,
+        options=BedrockModelOptions,
         access=bedrock_model_access,
         extra="bedrock",
         replace=replace,

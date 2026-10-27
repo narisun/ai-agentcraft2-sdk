@@ -437,10 +437,12 @@ def _owned_and_external_bindings() -> tuple[Binding, ...]:
             kind=ValueKind.JSON,
             details=(
                 'For Anthropic prompt caching, use {"anthropic": {"prompt_caching": true, '
-                '"cache_ttl": "5m"}}. Options apply to every alias using that provider. '
-                "Unknown options stop startup. `agentcraft2 config options model` lists options."
+                '"cache_ttl": "5m"}}; for Amazon Bedrock (Converse API), use {"bedrock": '
+                '{"prompt_caching": true, "cache_ttl": "5m"}}. Options apply to every alias '
+                "using that provider. Unknown options stop startup. `agentcraft2 config options "
+                "model` lists options."
             ),
-            default="`{}`: each provider's defaults; Anthropic prompt caching is off",
+            default="`{}`: each provider's defaults; prompt caching is off",
         ),
         Binding(
             name=f"{PREFIX}DATA_SOURCES",
