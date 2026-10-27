@@ -1,5 +1,11 @@
 # rmprep-v2: relationship manager meeting preparation
 
+> **rmprep-v2 is a copy of [rmprep](../rmprep/README.md)** on which the retrieval-first Q&A is
+> being built, so the two can be compared. It has its own names (`rmprep-v2`, `rmprep_v2`,
+> `rmprep-v2-data`) and ports (agent 8001, MCP server 8101) and runs beside rmprep. Today it
+> behaves exactly as rmprep does. See the [baseline report](docs/baseline-report.md) for what it
+> measures and the plan it follows. Commands below that say `rmprep` use `rmprep-v2` here.
+
 This example prepares a client meeting memo and answers follow-up questions from
 the CSV files in `data`. The supplied snapshot has 33 tables and 46 clients,
 covering relationships, credit, deposits, payments, service issues and opportunities.
