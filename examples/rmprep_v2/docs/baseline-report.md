@@ -72,8 +72,49 @@ supplied business scenarios and Jones's July and August memos.
 - No case is reviewed. An RM domain reviewer sets `review_status` and freezes a holdout split
   before any tuning against them.
 
-## Next: V1
+## How rmprep's graph compares with LangGraph practice
 
-The evidence store and the offloading tool node. First failing tests: a stored pack is returned
-byte for byte, a second write with different content is refused, and no checkpoint written during
-the memo turn contains more than the reference and the small summary.
+A review of the graph code (`graph.py`, `specialist.py`, `state.py`, `router.py`, `context.py`),
+not a benchmark. The foundations are sound. These parts follow good practice and v2 keeps them:
+typed state with reducers (including one that refuses to change an accepted memo version);
+per-request identity in `context_schema` rather than state; thread-scoped checkpointing; the
+standard `ToolNode` and `tools_condition` loop; model input assembled locally so trimming never
+deletes saved state; history kept in whole exchanges so a tool call is never split from its
+result; one atomic commit of an accepted answer; a deterministic router; and tests that use a
+scripted model against real checkpoints.
+
+These parts depart from it, and each has a fix with a phase and a test:
+
+| Departure in rmprep | Why it matters | v2 fix | Phase |
+| --- | --- | --- | --- |
+| Evidence packs live in `ToolMessage`s in state | State and the checkpoint database grow with data (9.7 MB above) | Store the original outside the graph; the tool node returns a reference and a small summary | V1 |
+| `MemoVersion.message_ids` point at raw messages | Trimming or compacting messages would break a memo | A memo points at a manifest ID in the evidence store | V1 |
+| `uuid4()` and `now()` called inside the node | A replay produces different IDs and times | IDs derive from the request, tool-call and message IDs; the clock stays injected | V1 |
+| One ~130-line `call_model` node does selection, context, generation, validation and commit | Hard to test or observe step by step | Nodes `select`, `build_context`, `generate`, `validate`, `commit`; each one small and tested alone | V3 |
+| The 3-attempt revision loop is a Python `for` inside the node | No checkpoint between attempts; a resume repeats the model calls | Revision is a `validate` to `generate` edge, counted in the request ledger | V3 |
+| Rejected drafts are kept out of state only because the loop is in one node | Moving the loop into the graph would otherwise checkpoint them | Spike first: hold drafts in an untracked or ephemeral channel and confirm no checkpoint contains one | V3 |
+| Both specialists share the parent `State`; `steps()` filters duplicate messages | No private scratch space and noisy streams | The Q&A subgraph gets its own state schema with explicit input and output | V3 |
+| `ValidationFailed` is raised after the retries | The run ends in an error, not an answer | A `limitation` node publishes a safe answer and ends the run normally | V3 |
+| No `recursion_limit` or `RetryPolicy` | Only the SDK budgets (50 model, 100 tool calls) bound the loop | An explicit `recursion_limit` and a `RetryPolicy` on the model and tool nodes, both tested; the 6 tool and 8 model call limits map onto the SDK budget | V3 |
+| Validation is part of `call_model` | A failed check is invisible as a step | `validate` is a node that returns issues; citation and numeric checks plug into it | V4 |
+
+Decisions this review leaves open:
+
+- **Hand-built loop.** v2 keeps the explicit graph rather than a prebuilt agent loop, because the
+  validation, budgets and visibility manifests do not fit one. `langchain` is not installed in
+  this environment, so a prebuilt `create_agent` was not evaluated.
+- **Memo agent.** The nodes above are written for Q&A first. The memo agent adopts the same nodes
+  once Q&A shows they hold, so memo behaviour stays comparable with rmprep until then.
+
+## Plan for V1 to V4, with the first failing tests
+
+| Phase | Work | First failing tests |
+| --- | --- | --- |
+| V1 | Evidence store protocol with a SQLite and FTS5 implementation; the offloading tool node; memo manifests; deterministic IDs | A stored pack is returned byte for byte; a second write with different content is refused; no checkpoint written during the memo turn holds more than a reference and a small summary; replaying a turn gives the same IDs |
+| V2 | Evidence cards, the section directory, `search_evidence`, `get_evidence`, `get_memo_section`, `get_analysis_note`; scope and date guards for tools that take only an ID | A card resolves only inside its client, version and thread; a search hit never discloses another client; an ID tool rejects a date that differs from the memo's |
+| V3 | The Q&A graph as small nodes with its own schema; the context assembler with the Q&A allocations; visibility manifest; request ledger; `limitation` node; `recursion_limit` and `RetryPolicy` | Every model request stays under the ceiling; a revision is a graph step and a resumed run keeps its counts; no checkpoint holds a rejected draft; exhausting a budget ends with a limitation answer, not an exception |
+| V4 | Citation resolver against the visibility manifest; calculation receipts; numeric warnings in `validate` | A directory-only or unseen citation fails; a derived figure cites its operands; a warning survives reload and copy |
+
+Baseline to beat: a typical Q&A turn near 8k estimated tokens for every question (today 7k to 9k
+only when a keyword matches, 29k to 30k otherwise), and no checkpoint database growth beyond the
+reference and summary per turn.
