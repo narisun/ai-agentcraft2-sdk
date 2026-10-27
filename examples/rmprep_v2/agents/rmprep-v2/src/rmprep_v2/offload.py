@@ -21,6 +21,7 @@ from agentcraft2_core.pipeline.guardrails import frame_untrusted
 from langchain_core.messages import AIMessage, AnyMessage, ToolMessage
 from langchain_core.runnables import Runnable, RunnableConfig
 
+from rmprep_v2.cards import build_cards
 from rmprep_v2.evidence_store import EvidenceStore, canonical_json, source_id
 from rmprep_v2.response_review import EVIDENCE_TOOLS, tool_payload
 from rmprep_v2.state import State
@@ -147,6 +148,8 @@ def offloading(
             label = _label(message)
             identity = source_id(label, call["args"], payload)
             await store.put_source(scope, identity, payload, tool=label, arguments=call["args"])
+            cards, notes = build_cards(identity, payload)
+            await store.put_cards(scope, identity, cards, notes)
             kept.append(_reference(message, payload, identity, label))
         return {**result, "messages": kept}
 

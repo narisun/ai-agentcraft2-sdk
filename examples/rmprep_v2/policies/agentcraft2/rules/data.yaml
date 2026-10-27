@@ -54,3 +54,11 @@ rules:
     applications: [rmprep-v2]
     resources: ["rmprep-v2-data/*"]
     max_classification: confidential
+
+  # The agent's own tools read the evidence it stored for the thread. They take no client or date.
+  # A native tool has no declared data classification, so the rule sets no ceiling; the
+  # thread's evidence store is the boundary.
+  - id: rmprep-v2-reads-its-stored-evidence
+    actions: [tool.call]
+    applications: [rmprep-v2]
+    resources: [search_evidence, get_evidence, get_memo_section, get_analysis_note]

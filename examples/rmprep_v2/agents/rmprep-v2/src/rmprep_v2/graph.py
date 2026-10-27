@@ -15,9 +15,11 @@ from rmprep_v2.artifacts import memo_artifacts
 from rmprep_v2.context import ContextBuilder
 from rmprep_v2.evidence_store import EvidenceStore, SqliteEvidenceStore
 from rmprep_v2.prompts import MEMO_PROMPT, QNA_PROMPT
+from rmprep_v2.retrieval import retrieval_tools
 from rmprep_v2.router import destination, router
 from rmprep_v2.specialist import build_specialist
 from rmprep_v2.state import State
+from rmprep_v2.tool_names import RETRIEVAL_TOOL_NAMES
 
 __all__ = [
     "APPLICATION",
@@ -72,14 +74,24 @@ def build_graph(
             Only a comparison with the previous behaviour needs it.
     """
     # Both specialists use the same provider and governed tools, but different prompts.
-    model = services.model("default").bind_tools(mcp_tools)
     evidence = _evidence_store(services, evidence_store) if offload_evidence else None
+    # The memo agent writes from the data tools. The Q&A agent can also read the stored
+    # evidence of the memo the application selected.
+    retrieval = (
+        services.tools(retrieval_tools(evidence), read_only=RETRIEVAL_TOOL_NAMES)
+        if evidence is not None
+        else []
+    )
+    qna_tools = [*mcp_tools, *retrieval]
+    model = services.model("default")
+    memo_model = model.bind_tools(mcp_tools)
+    qna_model = model.bind_tools(qna_tools)
     builder = StateGraph(State, context_schema=RequestContext)
     builder.add_node("router", router)
     builder.add_node(
         "memoagent",
         build_specialist(
-            model,
+            memo_model,
             mcp_tools,
             MEMO_PROMPT,
             default_word_limit=1000,
@@ -91,8 +103,8 @@ def build_graph(
     builder.add_node(
         "qnaagent",
         build_specialist(
-            model,
-            mcp_tools,
+            qna_model,
+            qna_tools,
             QNA_PROMPT,
             now=services.clock.now,
             context_builder=context_builder,

@@ -35,8 +35,10 @@ from langchain_core.utils.function_calling import convert_to_openai_tool
 
 from rmprep_v2.context import estimate_tokens
 from rmprep_v2.evals.packs import WORKSPACE, unframe
+from rmprep_v2.evidence_store import SqliteEvidenceStore
 from rmprep_v2.examples.trace_react import FOLLOW_UP, MEMO
 from rmprep_v2.graph import APPLICATION, answer, build_graph
+from rmprep_v2.retrieval import retrieval_tools
 from rmprep_v2_data import SERVER_ID, build_server
 
 MEETING_DATE = "2026-08-03"
@@ -171,6 +173,14 @@ async def measure(state_dir: Path, *, offload: bool = False) -> dict[str, Any]:
                 None, application=APPLICATION, thread_id="baseline"
             )
             schema_text = json.dumps([convert_to_openai_tool(t) for t in tools])
+            own = retrieval_tools(SqliteEvidenceStore(":memory:"))
+            own_text = json.dumps([convert_to_openai_tool(t) for t in own])
+            report["retrieval_tool_definitions"] = {
+                "count": len(own),
+                "chars": len(own_text),
+                "estimated_tokens": -(-len(own_text.encode()) // 3),
+                "offered_to_the_model": offload,
+            }
             report["tool_definitions"] = {
                 "count": len(tools),
                 "chars": len(schema_text),

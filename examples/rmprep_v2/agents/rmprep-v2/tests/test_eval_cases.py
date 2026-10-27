@@ -77,3 +77,16 @@ async def test_the_baseline_report_measures_a_memo_and_follow_ups(tmp_path: Path
     # The memo's evidence is in the checkpoint once, not once per question.
     first, last = report["turns"][0], report["turns"][-1]
     assert last["checkpoint_message_bytes"] < 2 * first["checkpoint_message_bytes"]
+
+
+async def test_keyword_search_puts_most_required_records_in_the_top_ten() -> None:
+    """A floor under the measured recall, so a change to the index or synonyms cannot quietly lose it."""
+    from rmprep_v2.evals import retrieval_recall
+
+    report = await retrieval_recall.measure()
+    assert report["cases"] >= 25
+    assert report["mean_recall"] >= 0.85
+    # Questions that name what they need are found. Follow-ups need the conversation.
+    for family in ("omitted_detail", "derivation", "cross_section", "memo_explanation"):
+        stats = report["by_family"][family]
+        assert stats["complete"] == stats["cases"], family

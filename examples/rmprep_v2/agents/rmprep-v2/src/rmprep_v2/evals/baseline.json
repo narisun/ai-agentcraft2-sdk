@@ -2,6 +2,12 @@
   "meeting_date": "2026-08-03",
   "estimator": "utf8_bytes/3 + 16",
   "evidence_offloaded": false,
+  "retrieval_tool_definitions": {
+    "count": 4,
+    "chars": 2096,
+    "estimated_tokens": 699,
+    "offered_to_the_model": false
+  },
   "tool_definitions": {
     "count": 4,
     "chars": 3228,
@@ -1461,17 +1467,17 @@
       "question": "Explain the covenant breaches in that memo. Use the saved evidence.",
       "model_calls": 1,
       "input_tokens_per_call": [
-        7121
+        7373
       ],
       "largest_call": {
-        "system": 4726,
+        "system": 4978,
         "evidence": 1975,
         "history": 370,
         "question_and_loop": 50
       },
       "checkpoint_messages": 6,
       "checkpoint_message_bytes": 73714,
-      "reported_estimate": 11121
+      "reported_estimate": 11373
     },
     {
       "turn": 3,
@@ -1479,17 +1485,17 @@
       "question": "How did the cash conversion cycle change, and why?",
       "model_calls": 1,
       "input_tokens_per_call": [
-        7832
+        8084
       ],
       "largest_call": {
-        "system": 4729,
+        "system": 4981,
         "evidence": 2510,
         "history": 549,
         "question_and_loop": 44
       },
       "checkpoint_messages": 8,
       "checkpoint_message_bytes": 74857,
-      "reported_estimate": 11832
+      "reported_estimate": 12084
     },
     {
       "turn": 4,
@@ -1497,17 +1503,17 @@
       "question": "Is the recorded waiver proof that it was executed?",
       "model_calls": 1,
       "input_tokens_per_call": [
-        7449
+        7701
       ],
       "largest_call": {
-        "system": 4729,
+        "system": 4981,
         "evidence": 1975,
         "history": 701,
         "question_and_loop": 44
       },
       "checkpoint_messages": 10,
       "checkpoint_message_bytes": 75899,
-      "reported_estimate": 11449
+      "reported_estimate": 11701
     },
     {
       "turn": 5,
@@ -1515,17 +1521,17 @@
       "question": "What is the single biggest risk to raise with the client?",
       "model_calls": 1,
       "input_tokens_per_call": [
-        29079
+        29331
       ],
       "largest_call": {
-        "system": 4729,
+        "system": 4981,
         "evidence": 23484,
         "history": 820,
         "question_and_loop": 46
       },
       "checkpoint_messages": 12,
       "checkpoint_message_bytes": 76935,
-      "reported_estimate": 33079
+      "reported_estimate": 33331
     },
     {
       "turn": 6,
@@ -1533,17 +1539,17 @@
       "question": "Which of the open actions has been outstanding longest?",
       "model_calls": 1,
       "input_tokens_per_call": [
-        29195
+        29447
       ],
       "largest_call": {
-        "system": 4729,
+        "system": 4981,
         "evidence": 23484,
         "history": 936,
         "question_and_loop": 46
       },
       "checkpoint_messages": 14,
       "checkpoint_message_bytes": 78014,
-      "reported_estimate": 33195
+      "reported_estimate": 33447
     },
     {
       "turn": 7,
@@ -1551,17 +1557,17 @@
       "question": "Summarise the memo in three sentences for my manager.",
       "model_calls": 1,
       "input_tokens_per_call": [
-        29322
+        29574
       ],
       "largest_call": {
-        "system": 4726,
+        "system": 4978,
         "evidence": 23484,
         "history": 1067,
         "question_and_loop": 45
       },
       "checkpoint_messages": 16,
       "checkpoint_message_bytes": 78878,
-      "reported_estimate": 33322
+      "reported_estimate": 33574
     },
     {
       "turn": 8,
@@ -1569,17 +1575,17 @@
       "question": "Explain the covenant breaches in that memo. Use the saved evidence.",
       "model_calls": 1,
       "input_tokens_per_call": [
-        7936
+        8188
       ],
       "largest_call": {
-        "system": 4726,
+        "system": 4978,
         "evidence": 1975,
         "history": 1185,
         "question_and_loop": 50
       },
       "checkpoint_messages": 18,
       "checkpoint_message_bytes": 79922,
-      "reported_estimate": 11936
+      "reported_estimate": 12188
     },
     {
       "turn": 9,
@@ -1587,17 +1593,17 @@
       "question": "How did the cash conversion cycle change, and why?",
       "model_calls": 1,
       "input_tokens_per_call": [
-        8647
+        8899
       ],
       "largest_call": {
-        "system": 4729,
+        "system": 4981,
         "evidence": 2510,
         "history": 1364,
         "question_and_loop": 44
       },
       "checkpoint_messages": 20,
       "checkpoint_message_bytes": 81065,
-      "reported_estimate": 12647
+      "reported_estimate": 12899
     },
     {
       "turn": 10,
@@ -1605,17 +1611,17 @@
       "question": "Is the recorded waiver proof that it was executed?",
       "model_calls": 1,
       "input_tokens_per_call": [
-        8264
+        8516
       ],
       "largest_call": {
-        "system": 4729,
+        "system": 4981,
         "evidence": 1975,
         "history": 1516,
         "question_and_loop": 44
       },
       "checkpoint_messages": 22,
       "checkpoint_message_bytes": 82107,
-      "reported_estimate": 12264
+      "reported_estimate": 12516
     },
     {
       "turn": 11,
@@ -1623,17 +1629,17 @@
       "question": "What is the single biggest risk to raise with the client?",
       "model_calls": 1,
       "input_tokens_per_call": [
-        29894
+        30146
       ],
       "largest_call": {
-        "system": 4729,
+        "system": 4981,
         "evidence": 23484,
         "history": 1635,
         "question_and_loop": 46
       },
       "checkpoint_messages": 24,
       "checkpoint_message_bytes": 83143,
-      "reported_estimate": 33894
+      "reported_estimate": 34146
     },
     {
       "turn": 12,
@@ -1641,17 +1647,17 @@
       "question": "Which of the open actions has been outstanding longest?",
       "model_calls": 1,
       "input_tokens_per_call": [
-        30010
+        30262
       ],
       "largest_call": {
-        "system": 4729,
+        "system": 4981,
         "evidence": 23484,
         "history": 1751,
         "question_and_loop": 46
       },
       "checkpoint_messages": 26,
       "checkpoint_message_bytes": 84222,
-      "reported_estimate": 34010
+      "reported_estimate": 34262
     },
     {
       "turn": 13,
@@ -1659,20 +1665,20 @@
       "question": "Summarise the memo in three sentences for my manager.",
       "model_calls": 1,
       "input_tokens_per_call": [
-        30137
+        30389
       ],
       "largest_call": {
-        "system": 4726,
+        "system": 4978,
         "evidence": 23484,
         "history": 1882,
         "question_and_loop": 45
       },
       "checkpoint_messages": 28,
       "checkpoint_message_bytes": 85086,
-      "reported_estimate": 34137
+      "reported_estimate": 34389
     }
   ],
   "checkpoint_sqlite_bytes": {
-    "agent\\checkpoints.sqlite": 9617408
+    "agent\\checkpoints.sqlite": 9625600
   }
 }

@@ -214,3 +214,66 @@ if an enterprise deployment wants that backend, because the protocol is six meth
 - Crash tests around the publication boundary, and authorization of derived views, are not written.
 - Tracing and inspection tools show the reference message, which is what the checkpoint holds.
   That is intended, but anyone who reads checkpoints to see the evidence must read the store.
+
+## V2 results: cards, search and the retrieval tools
+
+### What was built
+
+- [cards.py](../agents/rmprep-v2/src/rmprep_v2/cards.py): one card per source record, built by
+  code. A card keeps the record's values untouched, its `source_ref` (the citation key rmprep already
+  uses), its section's limits and its as-of date. A record larger than the 500-token target is
+  flagged `oversized`, never cut; the largest real record is about 350 tokens. Review findings
+  become analysis notes that name their supporting cards. `directory()` is a short map (sections,
+  counts, notes, limitations) held under 2,000 tokens.
+- The store gained cards, notes and a SQLite FTS5 keyword index (porter stemming), searched inside
+  one scope and the sources of the selected memos only. Queries are turned into quoted words, so
+  odd input is data, not syntax. A small controlled list of banking synonyms (for example "debt
+  service coverage" also looks for "DSCR") widens a query.
+- [retrieval.py](../agents/rmprep-v2/src/rmprep_v2/retrieval.py): four tools for the Q&A agent,
+  `search_evidence`, `get_evidence`, `get_memo_section` and `get_analysis_note`. Their results are
+  capped at 2k, 3k, 3k and 1.5k estimated tokens and say what they left out (`truncated`,
+  `next_offset`, `omitted_ids`, `skipped_ids`, `not_found`). The memo agent keeps the data tools only.
+- **The application, not the model, chooses the memo.** The tools read the memo or memos in the
+  turn's `selection`; there is no scope, client or date argument for a model to widen. With two
+  memos selected, `get_memo_section` makes the model name one, and an unselected memo is refused.
+- **Guards before a tool runs.** `tool_context_issues` exempts these tools from the data tools'
+  date argument, refuses a retrieval call when no memo is selected, and refuses a section call that
+  names an unselected memo. The tools repeat the checks, so a missed guard still returns nothing.
+- **Citations.** `get_evidence` and `get_memo_section` make a reference citable, because they return
+  the records. A search hit and an analysis note do not: a note is an interpretation, and a hit is a
+  lead. This is a first step toward the visibility-manifest rule of V4.
+- Governance: the tools run through `services.tools(...)`, so they get the policy, audit and framing
+  stages. The policy file gains a rule for the four names. A native tool has no declared data
+  classification, so the rule sets no ceiling; the thread's evidence store is the boundary.
+- The Q&A prompt is version 4: it explains search before fetch, that a note is not evidence, and that
+  an empty search does not show the evidence is absent. The harness that runs a scripted
+  conversation moved into `rmprep_v2.evals.harness` for reuse.
+
+### Measured
+
+| | V1 | V2 |
+| --- | --- | --- |
+| Q&A turn, model input (section keyword matches) | 7.1k to 8.6k | 7.4k to 8.9k |
+| Tool definitions the Q&A model carries | 1.1k | 1.1k plus 0.7k for the four new tools |
+| Keyword search, recall at 10 on the evaluation cases that name records | not available | 0.82 before the synonym list, 0.90 after (28 of 31 cases find every required record) |
+
+- Each Q&A call grows by about 250 tokens (the longer prompt), plus 700 for the tool definitions.
+  The saving comes when a question no longer sends the whole pack, which is V3's job.
+- The 31 cases are drafts, and the synonym list was added after seeing which ones missed (for
+  example "refinancing" and "service issue"). The 0.90 is therefore optimistic. Freeze a holdout
+  before tuning further. The misses left are the two follow-ups (the question alone says nothing
+  without the conversation) and the two-memo comparison (the measure indexes one memo).
+- A retrieved source carries a `source.retrieved_at` timestamp, so each retrieval of the same data
+  has its own source ID and its own card IDs. That is correct for an observation, but a scripted
+  test cannot compute a card ID in advance. The graph test therefore reads a whole section instead,
+  and the fetch-by-ID path is covered by direct tests on the tool functions.
+
+### Not done in V2
+
+- The directory is built and tested but not yet put in the prompt; V3's context assembler places it.
+- Role-based masking is not implemented: the supplied data masks no column, so there is no case to
+  test it against.
+- With `offload_evidence=False` the Q&A prompt still mentions tools that are not bound. Use it for
+  measuring storage, not for comparing answers.
+- Follow-ups such as "Explain the second one." need the conversation to form a query; that is
+  V3's typed focus and query rewriting.

@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import re
 from collections.abc import AsyncIterator, Mapping, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -28,9 +29,12 @@ __all__ = [
     "EvidenceConflict",
     "EvidenceMissing",
     "EvidenceStore",
+    "SearchHit",
+    "SearchPage",
     "SqliteEvidenceStore",
     "StoredSource",
     "canonical_json",
+    "fts_query",
     "source_id",
 ]
 
@@ -53,7 +57,113 @@ CREATE TABLE IF NOT EXISTS manifests (
     PRIMARY KEY (scope, manifest_id),
     UNIQUE (scope, memo_id)
 );
+CREATE TABLE IF NOT EXISTS cards (
+    scope TEXT NOT NULL,
+    card_id TEXT NOT NULL,
+    source_id TEXT NOT NULL,
+    section TEXT NOT NULL,
+    sha256 TEXT NOT NULL,
+    body TEXT NOT NULL,
+    seq INTEGER NOT NULL,
+    PRIMARY KEY (scope, card_id)
+);
+CREATE INDEX IF NOT EXISTS cards_by_source ON cards (scope, source_id, section, seq);
+CREATE TABLE IF NOT EXISTS notes (
+    scope TEXT NOT NULL,
+    note_id TEXT NOT NULL,
+    source_id TEXT NOT NULL,
+    sha256 TEXT NOT NULL,
+    body TEXT NOT NULL,
+    seq INTEGER NOT NULL,
+    PRIMARY KEY (scope, note_id)
+);
+CREATE VIRTUAL TABLE IF NOT EXISTS cards_fts USING fts5(
+    scope UNINDEXED, card_id UNINDEXED, source_id UNINDEXED, section UNINDEXED, text,
+    tokenize = 'porter unicode61'
+);
 """
+
+# Words that carry no meaning in a keyword search.
+_STOP_WORDS = frozenset(
+    [
+        "the",
+        "of",
+        "and",
+        "or",
+        "to",
+        "in",
+        "is",
+        "was",
+        "what",
+        "how",
+        "did",
+        "does",
+        "do",
+        "for",
+        "on",
+        "by",
+        "with",
+        "that",
+        "this",
+        "it",
+        "its",
+        "are",
+        "be",
+    ]
+)
+# Controlled banking synonyms: a phrase in the question also looks for the term the data uses.
+_SYNONYMS = {
+    "debt service coverage": ("dscr",),
+    "cash conversion cycle": ("ccc",),
+    "days sales outstanding": ("dso",),
+    "days inventory outstanding": ("dio",),
+    "days payable outstanding": ("dpo",),
+    "fixed charge coverage": ("fccr",),
+    "net working capital": ("nwc",),
+    "return on equity": ("roe",),
+    # Everyday words an RM uses for what the data calls something else.
+    "refinanc": ("facilities", "maturity", "renewal"),
+    "service issue": ("operational", "service", "cases", "requests"),
+    "collections": ("dso", "receivables"),
+    "receivables": ("dso", "ar"),
+}
+_WORD = re.compile(r"[^\W_]+")
+
+
+def fts_query(text: str) -> str:
+    """Turn free text into a safe FTS5 expression: quoted words joined by OR, never syntax."""
+    lowered = text.casefold()
+    found = _WORD.findall(lowered)
+    words = [word for word in found if word not in _STOP_WORDS]
+    spaced = " ".join(found)
+    for phrase, extra in _SYNONYMS.items():
+        if phrase in spaced:
+            words += extra
+    return " OR ".join(f'"{word}"' for word in dict.fromkeys(words))
+
+
+def _card_text(card: Mapping[str, Any]) -> str:
+    """What the keyword index holds for one card: its section, reference, names and values."""
+    parts = [str(card["section"]), str(card["source_ref"])]
+    for key, value in card["fields"].items():
+        parts += [key.replace("_", " "), "" if value is None else str(value)]
+    return " ".join(parts)
+
+
+@dataclass(frozen=True, slots=True)
+class SearchHit:
+    """One card found by a keyword search, best match first."""
+
+    card: dict[str, Any]
+    score: float
+
+
+@dataclass(frozen=True, slots=True)
+class SearchPage:
+    """A page of hits and how many cards matched in all."""
+
+    hits: list[SearchHit]
+    total: int
 
 
 class EvidenceConflict(Exception):
@@ -129,6 +239,61 @@ class EvidenceStore(Protocol):
 
     async def retire_scope(self, scope: str) -> int:
         """Delete everything of one scope and return how many rows went."""
+        ...
+
+    async def put_cards(
+        self,
+        scope: str,
+        source_id: str,
+        cards: Sequence[Mapping[str, Any]],
+        notes: Sequence[Mapping[str, Any]],
+    ) -> None:
+        """Store the cards and notes built from one source; the same ones again are a no-op."""
+        ...
+
+    async def search_cards(
+        self,
+        scope: str,
+        source_ids: Sequence[str],
+        query: str,
+        *,
+        section: str | None = None,
+        limit: int = 5,
+        offset: int = 0,
+    ) -> SearchPage:
+        """Keyword search over the cards of these sources only."""
+        ...
+
+    async def get_cards(
+        self, scope: str, source_ids: Sequence[str], card_ids: Sequence[str]
+    ) -> list[dict[str, Any]]:
+        """The named cards of these sources, in the order asked; unknown IDs are skipped."""
+        ...
+
+    async def section_cards(
+        self,
+        scope: str,
+        source_ids: Sequence[str],
+        section: str,
+        *,
+        offset: int = 0,
+        limit: int = 50,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """One page of a section's cards and the section's card count."""
+        ...
+
+    async def list_sections(self, scope: str, source_ids: Sequence[str]) -> dict[str, int]:
+        """The sections these sources have cards for, with their card counts."""
+        ...
+
+    async def list_notes(self, scope: str, source_ids: Sequence[str]) -> list[dict[str, Any]]:
+        """The analysis notes of these sources, in the order they were built."""
+        ...
+
+    async def get_note(
+        self, scope: str, source_ids: Sequence[str], note_id: str
+    ) -> dict[str, Any] | None:
+        """One note of these sources, or ``None``."""
         ...
 
 
@@ -284,8 +449,183 @@ class SqliteEvidenceStore:
     async def retire_scope(self, scope: str) -> int:
         async with self._session() as connection:
             removed = 0
-            for table in ("manifests", "sources"):
+            for table in ("manifests", "sources", "cards", "notes", "cards_fts"):
                 cursor = await connection.execute(f"DELETE FROM {table} WHERE scope = ?", (scope,))
-                removed += cursor.rowcount
+                removed += cursor.rowcount if table != "cards_fts" else 0
             await connection.commit()
         return removed
+
+    async def put_cards(
+        self,
+        scope: str,
+        source_id: str,
+        cards: Sequence[Mapping[str, Any]],
+        notes: Sequence[Mapping[str, Any]],
+    ) -> None:
+        async with self._session() as connection:
+            fresh_cards = await self._fresh(connection, "cards", "card_id", scope, cards)
+            fresh_notes = await self._fresh(connection, "notes", "note_id", scope, notes)
+            for seq, card, text, digest in fresh_cards:
+                await connection.execute(
+                    "INSERT INTO cards VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (scope, card["card_id"], source_id, card["section"], digest, text, seq),
+                )
+                await connection.execute(
+                    "INSERT INTO cards_fts (scope, card_id, source_id, section, text) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (scope, card["card_id"], source_id, card["section"], _card_text(card)),
+                )
+            for seq, note, text, digest in fresh_notes:
+                await connection.execute(
+                    "INSERT INTO notes VALUES (?, ?, ?, ?, ?, ?)",
+                    (scope, note["note_id"], source_id, digest, text, seq),
+                )
+            await connection.commit()
+
+    @staticmethod
+    async def _fresh(
+        connection: aiosqlite.Connection,
+        table: str,
+        key: str,
+        scope: str,
+        items: Sequence[Mapping[str, Any]],
+    ) -> list[tuple[int, Mapping[str, Any], str, str]]:
+        """The items not stored yet; an item stored with other content is a conflict."""
+        fresh: list[tuple[int, Mapping[str, Any], str, str]] = []
+        for seq, item in enumerate(items):
+            text = canonical_json(item)
+            digest = _digest(text)
+            row = await (
+                await connection.execute(
+                    f"SELECT sha256 FROM {table} WHERE scope = ? AND {key} = ?",
+                    (scope, item[key]),
+                )
+            ).fetchone()
+            if row is None:
+                fresh.append((seq, item, text, digest))
+            elif row[0] != digest:
+                raise EvidenceConflict(f"{table[:-1]} {item[key]} is stored with other content")
+        return fresh
+
+    async def search_cards(
+        self,
+        scope: str,
+        source_ids: Sequence[str],
+        query: str,
+        *,
+        section: str | None = None,
+        limit: int = 5,
+        offset: int = 0,
+    ) -> SearchPage:
+        match = fts_query(query)
+        if not match or not source_ids:
+            return SearchPage([], 0)
+        marks = ",".join("?" * len(source_ids))
+        where = f"cards_fts MATCH ? AND cards_fts.scope = ? AND cards_fts.source_id IN ({marks})"
+        arguments: list[Any] = [match, scope, *source_ids]
+        if section:
+            where += " AND cards_fts.section = ?"
+            arguments.append(section)
+        async with self._session() as connection:
+            total_row = await (
+                await connection.execute(f"SELECT COUNT(*) FROM cards_fts WHERE {where}", arguments)
+            ).fetchone()
+            rows = await (
+                await connection.execute(
+                    "SELECT c.body, bm25(cards_fts) AS score FROM cards_fts "
+                    "JOIN cards c ON c.scope = cards_fts.scope AND c.card_id = cards_fts.card_id "
+                    f"WHERE {where} ORDER BY score, c.seq LIMIT ? OFFSET ?",
+                    [*arguments, max(0, limit), max(0, offset)],
+                )
+            ).fetchall()
+        hits = [SearchHit(json.loads(body), float(score)) for body, score in rows]
+        return SearchPage(hits, int(total_row[0]) if total_row else 0)
+
+    async def get_cards(
+        self, scope: str, source_ids: Sequence[str], card_ids: Sequence[str]
+    ) -> list[dict[str, Any]]:
+        if not source_ids or not card_ids:
+            return []
+        sources = ",".join("?" * len(source_ids))
+        cards = ",".join("?" * len(card_ids))
+        async with self._session() as connection:
+            rows = await (
+                await connection.execute(
+                    "SELECT card_id, body FROM cards WHERE scope = ? "
+                    f"AND source_id IN ({sources}) AND card_id IN ({cards})",
+                    [scope, *source_ids, *card_ids],
+                )
+            ).fetchall()
+        found = {card_id: json.loads(body) for card_id, body in rows}
+        return [found[card_id] for card_id in dict.fromkeys(card_ids) if card_id in found]
+
+    async def section_cards(
+        self,
+        scope: str,
+        source_ids: Sequence[str],
+        section: str,
+        *,
+        offset: int = 0,
+        limit: int = 50,
+    ) -> tuple[list[dict[str, Any]], int]:
+        if not source_ids:
+            return [], 0
+        sources = ",".join("?" * len(source_ids))
+        where = f"scope = ? AND section = ? AND source_id IN ({sources})"
+        arguments: list[Any] = [scope, section, *source_ids]
+        async with self._session() as connection:
+            total_row = await (
+                await connection.execute(f"SELECT COUNT(*) FROM cards WHERE {where}", arguments)
+            ).fetchone()
+            rows = await (
+                await connection.execute(
+                    f"SELECT body FROM cards WHERE {where} ORDER BY source_id, seq "
+                    "LIMIT ? OFFSET ?",
+                    [*arguments, max(0, limit), max(0, offset)],
+                )
+            ).fetchall()
+        return [json.loads(body) for (body,) in rows], int(total_row[0]) if total_row else 0
+
+    async def list_sections(self, scope: str, source_ids: Sequence[str]) -> dict[str, int]:
+        if not source_ids:
+            return {}
+        sources = ",".join("?" * len(source_ids))
+        async with self._session() as connection:
+            rows = await (
+                await connection.execute(
+                    "SELECT section, COUNT(*) FROM cards WHERE scope = ? "
+                    f"AND source_id IN ({sources}) GROUP BY section ORDER BY MIN(rowid)",
+                    [scope, *source_ids],
+                )
+            ).fetchall()
+        return {section: int(count) for section, count in rows}
+
+    async def list_notes(self, scope: str, source_ids: Sequence[str]) -> list[dict[str, Any]]:
+        if not source_ids:
+            return []
+        sources = ",".join("?" * len(source_ids))
+        async with self._session() as connection:
+            rows = await (
+                await connection.execute(
+                    "SELECT body FROM notes WHERE scope = ? "
+                    f"AND source_id IN ({sources}) ORDER BY source_id, seq",
+                    [scope, *source_ids],
+                )
+            ).fetchall()
+        return [json.loads(body) for (body,) in rows]
+
+    async def get_note(
+        self, scope: str, source_ids: Sequence[str], note_id: str
+    ) -> dict[str, Any] | None:
+        if not source_ids:
+            return None
+        sources = ",".join("?" * len(source_ids))
+        async with self._session() as connection:
+            row = await (
+                await connection.execute(
+                    "SELECT body FROM notes WHERE scope = ? AND note_id = ? "
+                    f"AND source_id IN ({sources})",
+                    [scope, note_id, *source_ids],
+                )
+            ).fetchone()
+        return json.loads(row[0]) if row else None

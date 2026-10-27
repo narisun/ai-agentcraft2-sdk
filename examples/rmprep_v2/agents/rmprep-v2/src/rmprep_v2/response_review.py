@@ -13,6 +13,8 @@ from typing import Any
 
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
 
+from rmprep_v2.tool_names import EVIDENCE_TOOL_NAMES
+
 _WORD_LIMIT = re.compile(
     r"\b(within|at most|no more than|maximum(?: of)?|up to|under|less than)\s+"
     r"(\d[\d,]*)\s+words\b",
@@ -146,12 +148,19 @@ def _word_count(text: str) -> int:
 
 def _page_references(payload: dict[str, Any]) -> set[str]:
     pages = payload.get("sections", {}).values() if "sections" in payload else [payload]
-    return {
+    found = {
         str(record["source_ref"])
         for page in pages
         for record in page.get("records", [])
         if isinstance(record.get("source_ref"), str)
     }
+    # Cards returned by get_evidence and get_memo_section are the records themselves.
+    found.update(
+        str(card["source_ref"])
+        for card in payload.get("cards", [])
+        if isinstance(card, dict) and isinstance(card.get("source_ref"), str)
+    )
+    return found
 
 
 def tool_payload(message: AnyMessage, *, include_lookup: bool = False) -> dict[str, Any]:
@@ -160,10 +169,11 @@ def tool_payload(message: AnyMessage, *, include_lookup: bool = False) -> dict[s
         not isinstance(message, ToolMessage)
         or message.name
         not in (
-            _MCP_TOOLS | {"rmprep-v2-data.find_clients", "rmprep-v2-data_find_clients"}
+            (_MCP_TOOLS | {"rmprep-v2-data.find_clients", "rmprep-v2-data_find_clients"})
             if include_lookup
             else _MCP_TOOLS
         )
+        | set(EVIDENCE_TOOL_NAMES)
         or not isinstance(message.content, str)
         or not message.content.startswith("<untrusted_tool_result")
     ):
