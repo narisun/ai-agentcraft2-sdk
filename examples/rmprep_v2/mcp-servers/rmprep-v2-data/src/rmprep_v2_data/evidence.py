@@ -9,8 +9,10 @@ from typing import Any, Protocol, cast
 from agentcraft2_core import ValidationFailed
 from agentcraft2_core.contracts import QueryResult
 
+from rmprep_v2_data.client_sections import CLIENT_SECTIONS
 from rmprep_v2_data.measurements import enrich_page
-from rmprep_v2_data.sections import SECTIONS, ClientSection, ReferenceSection
+from rmprep_v2_data.reference_sections import REFERENCE_SECTIONS
+from rmprep_v2_data.sections import ClientSection, ReferenceSection, SectionSpec
 from rmprep_v2_data.signals import review_findings
 
 
@@ -53,12 +55,14 @@ def _window(start: date | None, end: date) -> tuple[date, date]:
     return first, end
 
 
-def _page(name: str, result: QueryResult, offset: int) -> dict[str, Any]:
+def _page(
+    name: str, result: QueryResult, offset: int, sections: Mapping[str, SectionSpec]
+) -> dict[str, Any]:
     """Keep query metadata and stable row references alongside JSON-safe values."""
     payload = result.to_payload()
     rows = cast(list[list[Any]], payload["rows"])
     records = [dict(zip(result.columns, row, strict=True)) for row in rows]
-    spec = SECTIONS[name]
+    spec = sections[name]
     for record in records:
         key = ";".join(f"{column}={record.get(column)}" for column in spec.keys)
         record["source_ref"] = f"{spec.table}[{key}]"
@@ -130,7 +134,7 @@ class ClientEvidence:
             },
         )
         page = {
-            **_page(section.value, result, offset),
+            **_page(section.value, result, offset, CLIENT_SECTIONS),
             "uen": uen.strip().upper(),
             "start_date": first.isoformat(),
             "end_date": last.isoformat(),
@@ -157,7 +161,7 @@ class ClientEvidence:
                 "row_offset": offset,
             },
         )
-        return _page(section.value, result, offset)
+        return _page(section.value, result, offset, REFERENCE_SECTIONS)
 
     async def memo(self, uen: str, meeting_date: date) -> dict[str, Any]:
         """Collect a bounded memo pack; expose omissions and use code for calculations."""

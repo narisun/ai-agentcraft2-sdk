@@ -10,12 +10,27 @@ from mcp.server.mcpserver import MCPServer
 from pydantic import Field
 
 from rmprep_v2_data.evidence import ClientEvidence
-from rmprep_v2_data.sections import ClientSection, ReferenceSection
+from rmprep_v2_data.sections import ClientSection, Query, ReferenceSection
 
-__all__ = ["APPLICATION", "DATA_SOURCE", "SERVER_ID", "build_server"]
+__all__ = ["APPLICATION", "DATA_SOURCE", "FIND_CLIENTS", "SERVER_ID", "build_server"]
 
 APPLICATION = SERVER_ID = "rmprep-v2-data"
 DATA_SOURCE = "rmprep_v2"
+
+# The SQL of the find_clients tool below. The SQL of get_client_records is in client_sections.py
+# and the SQL of get_reference_data is in reference_sections.py, one entry per section.
+FIND_CLIENTS = Query(
+    parameters=("search: string",),
+    sql="""
+        SELECT uen, name, industry, country, currency,
+               CASE WHEN LOWER(uen) = LOWER(:search) OR LOWER(name) = LOWER(:search)
+                    THEN 0 ELSE 1 END AS match_rank
+        FROM accounts
+        WHERE :search <> ''
+          AND (LOWER(uen) = LOWER(:search) OR STRPOS(LOWER(name), LOWER(:search)) > 0)
+        ORDER BY match_rank, name, uen
+    """,
+)
 
 
 def build_server(services: ServiceContainer) -> MCPServer[Any]:

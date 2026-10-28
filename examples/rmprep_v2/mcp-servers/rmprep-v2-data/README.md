@@ -1,6 +1,7 @@
 # rmprep-v2-data MCP service
 
-This service reads the workspace's `data` folder through 35 named SQL queries.
+This service reads the workspace's `data` folder through 35 named SQL queries, each written
+beside the tool and section that uses it.
 Four MCP tools expose client evidence to the agent. Start with the
 [workspace walkthrough](../../README.md) for installation using Command Prompt,
 Python and pip.
@@ -12,8 +13,24 @@ python -m rmprep_v2_data
 ```
 
 The endpoint is `http://127.0.0.1:8101/mcp`. Its `.env` sets
-`data_dir` to `../../data` and `queries_dir` to `queries`. Restart the
+`data_dir` to `../../data` and `queries_module` to `rmprep_v2_data.queries`. Restart the
 service after changing CSV files: DuckDB loads them when the provider starts.
+An older `.env` that sets `queries_dir` must change it to `queries_module`: the folder of
+query files is gone.
+
+## Where the SQL is
+
+Each query is written next to what uses it, so a tool can be read from its description to its SQL:
+
+| Tool | Its SQL |
+| --- | --- |
+| `find_clients` | `FIND_CLIENTS` in `server.py`, above the tool |
+| `get_client_records` | one entry per section in `client_sections.py`: SQL, table, keys, note |
+| `get_reference_data` | one entry per section in `reference_sections.py` |
+| `get_memo_evidence` | none of its own: it reads the client sections one by one |
+
+`queries.py` gathers them into the text the data source loads when it starts, and the start fails
+if a query does not parse, uses a parameter it does not declare, or does not fit the CSV files.
 
 ## The data model
 
@@ -105,9 +122,10 @@ Phoenix to inspect arguments and results when content capture is enabled.
 to `ClientEvidence` in `evidence.py`. That class composes results without
 opening files or knowing the database provider. `signals.py` calculates review
 findings; `measurements.py` adds comparisons and evidence limits after policy
-and masking have run. `sections.py` describes the allowed sections and
-provenance, while SQL files define retrieval. This separation lets tests exercise
-business calculations and real queries independently.
+and masking have run. `sections.py` names the allowed sections; `client_sections.py`
+and `reference_sections.py` hold each section's SQL with its provenance, and the SQL of
+`find_clients` is in `server.py`. This separation lets tests exercise business
+calculations and real queries independently.
 
 The library enforces tool and data policy and records audit events. The example
 permits analysts and managers to read all clients. Portfolio entitlements and

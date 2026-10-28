@@ -56,7 +56,8 @@ tests read it. None of the named evidence queries selects it, and the
 `data_model` query excludes its dictionary rows. Those expectations must never
 become evidence in a model prompt.
 
-The four tools select from 35 reviewed SQL queries. The section
+The four tools select from 35 reviewed SQL queries, written in `client_sections.py`,
+`reference_sections.py` and `server.py`. The section
 `payment_totals` aggregates raw transactions; `deposits` selects the latest
 available month; `deposit_history` returns dated balance history. All other
 client sections expose scoped source records, sometimes joining facilities or

@@ -75,7 +75,7 @@ Keep existing `.env` files if you have configured them already. Check that the
 MCP service's `AC2_DATA_SOURCES` setting points to the supplied folder:
 
 ```dotenv
-AC2_DATA_SOURCES={"rmprep_v2":{"kind":"duckdb_csv","data_dir":"../../data","queries_dir":"queries"}}
+AC2_DATA_SOURCES={"rmprep_v2":{"kind":"duckdb_csv","data_dir":"../../data","queries_module":"rmprep_v2_data.queries"}}
 ```
 
 Paths are relative to the MCP service's `.env`. The CSV files stay in
@@ -280,7 +280,7 @@ currency caveats and the example review thresholds. Read the
 | `evidence.py` in that package | Compose pages and memo packs with provenance and gaps. |
 | `signals.py` in that package | Calculate deterministic, sourced review findings. |
 | `measurements.py` in that package | Calculate comparable changes, overdue days and observed payment coverage; describe what the records cannot establish. |
-| `sections.py` and the service's `queries` folder | Allowlist evidence sections and define parameterized, read-only SQL. |
+| `sections.py`, `client_sections.py`, `reference_sections.py` in that package | Allowlist evidence sections and define each one's parameterized, read-only SQL beside its table, keys and note. |
 | `data` | Supplied CSV snapshot, read in place. |
 | `registry` and `policies` | Declare tools, pin schemas and authorize access. |
 
