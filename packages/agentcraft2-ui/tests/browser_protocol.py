@@ -51,6 +51,13 @@ async def poll(
         pytest.fail(f"Condition not met within {timeout}s: {source}")
 
 
+def replay_activity(emit: Any, frames: list[dict[str, object]]) -> None:
+    """Send each activity frame with a pause, so a browser can show them before the draft."""
+    for frame in frames:
+        emit("activity", **frame)
+        time.sleep(0.15)
+
+
 class LocalServer:
     def __init__(self, path: Path) -> None:
         self.path = path
@@ -59,6 +66,7 @@ class LocalServer:
         self.calls: list[dict[str, Any]] = []
         self.delay = 0.0
         self.streaming = False
+        self.activity_frames: list[dict[str, object]] = []
         self.stream_failure = False
         self.lose_response = False
         self.answer: str | None = None
@@ -104,6 +112,7 @@ class LocalServer:
                         )
                         self.wfile.flush()
 
+                    replay_activity(emit, owner.activity_frames)
                     emit("draft", call=1, text="", reset=True)
                     for text in ("Draft ", "arrives ", "before final"):
                         emit("draft", call=1, text=text, reset=False)
