@@ -19,6 +19,7 @@ service after changing CSV files: DuckDB loads them when the provider starts.
 
 `data/data_model.csv` describes every table and column, including what each table holds. It follows a
 [standard](../../docs/data-model-standard.md) that a test enforces; edit the file, then run the tests.
+`ac2 data model check|diff|validate ../../data` runs the same checks by hand.
 
 ## Tools
 

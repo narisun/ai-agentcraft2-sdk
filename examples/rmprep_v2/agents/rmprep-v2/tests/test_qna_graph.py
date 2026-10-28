@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from agentcraft2_core import PolicyDenied
+from agentcraft2_core import PolicyDenied, TransientError
 from agentcraft2_core.testing import calls_tool
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.errors import NodeError, NodeTimeoutError
@@ -495,15 +495,21 @@ async def test_the_visibility_record_keeps_every_kind_of_reference(
 # --- retries the platform made inside one model call ---------------------------------------------
 
 
-def retried(reply: AIMessage, attempts: int) -> AIMessage:
-    """A reply as the governed model returns it after the pipeline retried a failure."""
-    return reply.model_copy(update={"response_metadata": {"agentcraft2_attempts": attempts}})
+def failing_then(reply: Any, failures: int) -> tuple[Any, ...]:
+    """A script in which the provider fails ``failures`` times before it answers.
+
+    The governed model retries a transient failure inside one call and stamps the number of
+    attempts on its reply, so these tests use the platform's own retry, not a made-up count.
+    """
+    return (*[TransientError("the provider is busy") for _ in range(failures)], reply)
 
 
 async def test_a_call_the_platform_retried_counts_every_attempt(
     tmp_path: Path, store: SqliteEvidenceStore
 ) -> None:
-    run = await ask(tmp_path, store, retried(AIMessage("The memo flags covenant pressure."), 3))
+    run = await ask(
+        tmp_path, store, *failing_then(AIMessage("The memo flags covenant pressure."), 2)
+    )
     ledger = run.diagnostics["ledger"]
     assert ledger["model_calls"] == 3, "three provider attempts were made for one answer"
     assert ledger["tool_calls"] == 0
@@ -513,6 +519,8 @@ async def test_retries_use_up_the_model_call_limit(
     tmp_path: Path, store: SqliteEvidenceStore
 ) -> None:
     # One logical call, but three attempts: the limit of three is reached before the next call.
-    run = await ask(tmp_path, store, retried(SEARCH, 3), GOOD, limits=lim(max_model_calls=3))
+    run = await ask(tmp_path, store, *failing_then(SEARCH, 2), GOOD, limits=lim(max_model_calls=3))
     assert run.diagnostics["limitation"] == "model_calls"
-    assert len(run.prompts) == 3, "the memo turn and one Q&A call; the second was never made"
+    assert GOOD not in {str(m.content) for m in run.messages}, "the second call was never made"
+    sent = [prompt for prompt in run.prompts if prompt]
+    assert len(sent) == 5, "the memo turn (2) and the three attempts of one Q&A call"

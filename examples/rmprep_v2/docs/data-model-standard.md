@@ -35,10 +35,12 @@ Names (`domain`, `table`, `column`) are lower case words joined by underscores.
 
 ## The check
 
-The check reads the model and the CSV files beside it. It is `check_data_model` in
-`mcp-servers/rmprep-v2-data/src/rmprep_v2_data/data_model.py`, and the test
-`test_the_supplied_data_model_follows_the_standard` runs it on every test run. A broken model
-stops the build.
+The check reads the model and the CSV files beside it. It belongs to the SDK: run it by hand with
+`ac2 data model check data`, and see `docs/data-model.md` in the SDK for the same standard, for
+drafting a model from CSV files (`draft`), listing how a model differs from the files (`diff`) and
+checking every value in the files (`validate`). The test
+`test_the_supplied_data_model_follows_the_standard` runs the check on every test run, and the tests
+beside it run `diff` and `validate`. A broken model or a bad value stops the build.
 
 An **error** is a missing or wrong fact and fails the test:
 
