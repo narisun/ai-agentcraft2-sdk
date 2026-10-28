@@ -1,0 +1,210 @@
+"""The agent behind its HTTP entry point, called in process with no network."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+from unittest.mock import Mock
+
+import httpx
+import pytest
+from agentcraft2_core import Principal
+from agentcraft2_core.integrations import langgraph as langgraph_sdk
+from agentcraft2_core.integrations.http import ServiceLifecycle, build_agent_app
+from agentcraft2_core.testing import FakeChatModelProvider, FakeIdentityVerifier, Fakes
+from langchain_core.messages import AIMessage
+
+from rmprep_v2 import service
+from rmprep_v2.service import SERVICE, build_app
+
+ADA = {"authorization": "Bearer ada-token"}
+
+
+async def test_the_declared_service_composes_the_local_inspector_on_its_own(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(service, "ENV_FILE", tmp_path / "missing.env")  # the default budget
+    kit = fakes("Hello there.")
+    async with kit.container() as services:
+        lifecycle = ServiceLifecycle(services.validate)
+        app = await build_agent_app(SERVICE, services, lifecycle)
+        await lifecycle.start()
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app), base_url="http://agent.test"
+        ) as client:
+            answer = await client.post("/invoke", json=question("Hello?"), headers=ADA)
+            inspected = await client.get(
+                f"/requests/{answer.json()['request_id']}/inspection?thread_id=th-1", headers=ADA
+            )
+    assert inspected.status_code == 200
+    assert inspected.json()["checkpoints"]["record_count"] > 0
+
+
+def test_a_deployed_service_gets_no_inspector_from_the_declared_service() -> None:
+    deployed = Mock()
+    deployed.config.deployment_env = "dev"
+    assert SERVICE.app_extras is not None
+    assert SERVICE.app_extras(deployed, lambda: None) == {}
+
+
+async def test_inspector_can_be_composed_before_container_startup() -> None:
+    kit = fakes("Hello there.")
+    services = kit.container()
+
+    async def start() -> None:
+        await services.start()
+        await services.validate()
+
+    lifecycle = ServiceLifecycle(start)
+    try:
+        app = await build_app(services, lifecycle)
+        await lifecycle.start()
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app), base_url="http://agent.test"
+        ) as client:
+            answer = await client.post("/invoke", json=question("Hello?"), headers=ADA)
+            request_id = answer.json()["request_id"]
+            inspected = await client.get(
+                f"/requests/{request_id}/inspection?thread_id=th-1", headers=ADA
+            )
+            assert inspected.status_code == 200
+            assert inspected.json()["checkpoints"]["record_count"] > 0
+            assert inspected.json()["model_inputs"]["availability"] == "disabled"
+    finally:
+        await services.aclose()
+
+
+def fakes(*replies: Any) -> Fakes:
+    return Fakes(
+        model=FakeChatModelProvider(list(replies)),
+        identity=FakeIdentityVerifier({"ada-token": Principal(subject="ada", tenant="t-1")}),
+    )
+
+
+def question(text: str, thread: str = "th-1") -> dict[str, Any]:
+    return {"input": {"question": text}, "thread_id": thread}
+
+
+async def test_a_signed_in_caller_gets_an_answer() -> None:
+    kit = fakes("Hello there.")
+    async with kit.container() as services:
+        lifecycle = ServiceLifecycle(services.validate)
+        app = await build_app(services, lifecycle)
+        await lifecycle.start()
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://agent.test") as http:
+            reply = await http.post("/invoke", json=question("Hello?"), headers=ADA)
+            ready = await http.get("/readyz")
+
+    assert reply.status_code == 200
+    assert reply.json()["output"] == {"answer": "Hello there."}
+    assert ready.status_code == 200
+    assert kit.audit.records[0].subject == "ada"
+
+
+async def test_a_streamed_run_sends_each_step_then_the_end() -> None:
+    kit = fakes("Hello there.")
+    async with kit.container() as services:
+        lifecycle = ServiceLifecycle(services.validate)
+        app = await build_app(services, lifecycle)
+        await lifecycle.start()
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://agent.test") as http:
+            reply = await http.post("/invoke/stream", json=question("Hello?"), headers=ADA)
+
+    # Server-sent events: "event: <name>" then "data: <json>", a blank line between.
+    events = [block.split("\n", 1) for block in reply.text.strip().split("\n\n")]
+    names = [name.removeprefix("event: ") for name, _ in events]
+    data = [json.loads(line.removeprefix("data: ")) for _, line in events]
+    assert names == ["update"] * 6 + ["end"]
+    assert [step["node"] for step in data[:6]] == [
+        "router",
+        "qnaagent/select",
+        "qnaagent/prefetch",
+        "qnaagent/generate",
+        "qnaagent/validate",
+        "qnaagent/commit",
+    ]
+    assert data[0]["route"] == "qnaagent"
+    # The draft is checked before anyone sees it: only the accepted answer is a message.
+    assert [step["messages"] for step in data[:5]] == [[], [], [], [], []]
+    assert data[5]["messages"][-1]["content"] == "Hello there."
+    assert data[6]["thread_id"] == "th-1"
+
+
+async def test_a_caller_without_a_valid_token_is_refused_and_nothing_runs() -> None:
+    kit = fakes("never used")
+    async with kit.container() as services:
+        lifecycle = ServiceLifecycle(services.validate)
+        app = await build_app(services, lifecycle)
+        await lifecycle.start()
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://agent.test") as http:
+            no_token = await http.post("/invoke", json=question("Hello?"))
+            malformed = await http.post("/invoke", json={"input": "just text"}, headers=ADA)
+
+    assert no_token.status_code == 401
+    assert (malformed.status_code, malformed.json()["error"]) == (400, "invalid")
+    assert all(not model.calls for model in kit.model.models)
+
+
+@pytest.mark.parametrize("live", [False, True])
+async def test_text_blocks_render_as_prose_and_json_envelope_stays_compatible(live: bool) -> None:
+    kit = fakes(AIMessage(content=[{"type": "text", "text": "A readable answer."}]))
+    async with kit.container() as services:
+        lifecycle = ServiceLifecycle(services.validate)
+        app = await build_app(services, lifecycle)
+        await lifecycle.start()
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app), base_url="http://agent.test"
+        ) as http:
+            response = await http.post(
+                "/invoke",
+                json=question("Hello?"),
+                headers={**ADA, "accept": "text/event-stream" if live else "application/json"},
+            )
+    if live:
+        frame = next(
+            frame for frame in response.text.split("\n\n") if frame.startswith("event: result")
+        )
+        body = json.loads(frame.split("data: ")[1])
+        assert body["usage"]["kind"] == "simulated"
+    else:
+        body = response.json()
+        assert set(body) == {"output", "thread_id", "request_id"}
+    assert body["output"]["answer"] == "A readable answer."
+
+
+@pytest.mark.skipif(
+    not hasattr(langgraph_sdk, "report_activity"),
+    reason="needs the SDK change that sends activity events (feat/live-activity-events)",
+)
+async def test_a_live_response_tells_the_reader_what_the_agent_is_doing() -> None:
+    """Through the real service and the SDK's live response: fixed status lines, then the result."""
+    kit = fakes("Hello there.")
+    async with kit.container() as services:
+        lifecycle = ServiceLifecycle(services.validate)
+        app = await build_app(services, lifecycle)
+        await lifecycle.start()
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app), base_url="http://agent.test"
+        ) as http:
+            response = await http.post(
+                "/invoke",
+                json=question("Hello?"),
+                headers={**ADA, "accept": "text/event-stream"},
+            )
+    frames = [f for f in response.text.split("\n\n") if f.startswith("event:")]
+    names = [f.split("\n", 1)[0].removeprefix("event: ") for f in frames]
+    assert names[-1] == "result"
+    lines = [json.loads(f.split("data: ", 1)[1]) for f in frames if f.startswith("event: activity")]
+    assert [(line["seq"], line["kind"], line["label"]) for line in lines] == [
+        (1, "selecting", "Choosing the memo"),
+        (2, "drafting", "Writing the answer"),
+        (3, "checking", "Checking citations and figures"),
+    ]
+    assert {(line["thread_id"], line["request_id"]) for line in lines} == {
+        ("th-1", json.loads(frames[-1].split("data: ", 1)[1])["request_id"])
+    }
+    assert "Hello there." not in "".join(f for f in frames if f.startswith("event: activity"))
