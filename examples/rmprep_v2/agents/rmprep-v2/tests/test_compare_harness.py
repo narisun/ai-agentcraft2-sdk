@@ -17,6 +17,7 @@ from rmprep_v2.evals.compare import (
     section_of,
     summarize,
 )
+from rmprep_v2.evals.packs import WORKSPACE
 
 
 def case(identifier: str) -> Any:
@@ -64,6 +65,10 @@ def test_both_variants_are_described() -> None:
 # --- running them ---------------------------------------------------------------------------------
 
 
+@pytest.mark.skipif(
+    not (WORKSPACE.parent / "rmprep").exists(),
+    reason="needs the baseline example (examples/rmprep) beside this workspace",
+)
 async def test_the_same_case_runs_on_both_variants_and_is_measured(tmp_path: Path) -> None:
     results = await run_cases([case("QA-009")], tmp_path)
     assert {r.variant for r in results} == {"rmprep", "rmprep-v2"}
