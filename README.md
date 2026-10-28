@@ -256,14 +256,20 @@ PYTHON=python3
 `PYTHON` (`python` or `python3` on your PATH when it is not set) and pass every option on;
 they stop with the fix when that Python cannot run. `tools/install_sdk.py` is the one
 script that builds and installs the SDK, with its tools. It checks the environment, looks
-for an SDK that is already installed, builds the packages, uninstalls the old SDK and its
-tools, and only then installs the new ones, printing each step as it goes and stopping at
+for an SDK that is already installed, builds the packages, uninstalls the old SDK, and only
+then installs the new one, printing each step as it goes and stopping at
 the first problem. pip prints only problems, so the steps stay readable; add `--verbose` to
 see everything pip prints. It also warns about a `~gentcraft2-...` folder that an
 interrupted uninstall left behind, and says how to delete it. The tools, Phoenix for traces
 and Agent Lab to come, go in the SDK's own folder, `AC2_SDK_PATH` (by default
 `agentcraft2-sdk` in `%LOCALAPPDATA%` on Windows, never in a roaming or network folder, and
-`~/.agentcraft2_sdk` elsewhere); `ac2 services` starts and stops them. With `--dev
+`~/.agentcraft2_sdk` elsewhere); `ac2 services` starts and stops them. They are large and
+rarely change, so a run keeps a tool that is already installed for this SDK version, this
+Python and the same requirements (the `pyproject.toml` of the packages it is made from), and
+says so; it installs one that is missing, damaged or out of date, and only that one. Code
+edits need no reinstall, because a checkout is installed editable. `--force-services` removes
+every tool and installs it again, clean; stop a running tool first (`ac2 services stop`) when
+it is to be replaced. With `--dev
 --editable` it installs the local packages, optional dependencies and development tools,
 and `--no-services` leaves the tools out (CI does). Without options it builds wheels and
 installs them, as a consumer would get them (`--no-index --find-links=...` and other pip

@@ -25,6 +25,11 @@ Options: ``--dev`` also installs every optional dependency and the development t
 source take effect at once; ``--no-services`` leaves the tools out. Any other argument is
 passed to pip, for example ``--no-index --find-links=/path/to/wheels``. pip prints only
 problems, so the steps stay readable; ``--verbose`` shows everything pip prints.
+
+The tools are large and rarely change, so a tool that is already installed for this SDK, this
+Python and the same requirements is kept and skipped; one that is missing, damaged or out of
+date is installed. ``--force-services`` removes every tool first and installs it again, clean.
+Stop a running tool first (``ac2 services stop``) when it is to be replaced.
 """
 
 from __future__ import annotations
@@ -233,8 +238,12 @@ def sdk_folder() -> Path:
     return folder
 
 
-def check_tools_folder(sdk: Path) -> list[str]:
-    """Check the folder of the SDK's tools: on a local disk, short enough, with room."""
+def check_tools_folder(sdk: Path, *, replace_all: bool = True) -> list[str]:
+    """Check the folder of the SDK's tools: on a local disk, short enough, with room.
+
+    A running tool stops the run only when ``replace_all``: otherwise the tools that are current
+    are left alone, and one that needs replacing is refused later, naming it.
+    """
     disks = load_module(CORE_CONFIG / "local_disk.py")
     reason = disks.local_disk_problem(sdk)
     if reason is not None:
@@ -257,6 +266,8 @@ def check_tools_folder(sdk: Path) -> list[str]:
             f"about {int(SERVICE_MEGABYTES * 1.5)} MB needed",
             "free some space, or set AC2_SDK_PATH to a folder on a larger local disk",
         )
+    if not replace_all:
+        return [f"Tools go in {sdk} (a local disk, {room} MB free)"]
     refuse_while_running(sdk)
     return [f"Tools go in {sdk} (a local disk, {room} MB free), and none is running"]
 
@@ -327,7 +338,11 @@ def check_environment(arguments: argparse.Namespace, pip_arguments: Sequence[str
             f"warns about it on every run. Delete it: {removal_command(entry)}"
         )
     if not arguments.no_services:
-        lines.extend(check_tools_folder(sdk_folder()))
+        lines.extend(
+            check_tools_folder(
+                sdk_folder(), replace_all=getattr(arguments, "force_services", False)
+            )
+        )
     return lines
 
 
@@ -601,8 +616,8 @@ def remove_tools(sdk: Path) -> list[str]:
     return removed
 
 
-def install_tools(sdk: Path, verbose: bool = False) -> list[str]:
-    """Install the SDK's tools with the SDK that was just installed."""
+def install_tools(sdk: Path, verbose: bool = False, force: bool = False) -> list[str]:
+    """Install the SDK's tools with the SDK that was just installed; skip those that are current."""
     environment = {**os.environ, "AC2_SDK_PATH": str(sdk)}
     done = subprocess.run(  # noqa: S603 - this Python, running the SDK's own installer
         [
@@ -613,6 +628,7 @@ def install_tools(sdk: Path, verbose: bool = False) -> list[str]:
             "--checkout",
             str(ROOT),
             *(["--verbose"] if verbose else []),
+            *(["--force"] if force else []),
         ],
         env=environment,
         cwd=ROOT,
@@ -694,12 +710,18 @@ def steps(
         wheels = build_wheels(getattr(arguments, "verbose", False))
         complete([])
 
+    force = getattr(arguments, "force_services", False)
     begin()
-    gone = remove_tools(sdk) if sdk is not None else []
+    gone = remove_tools(sdk) if sdk is not None and force else []
     if installed:
         uninstall(installed)
     removed = [f"removed {', '.join(item.name for item in installed)}"] if installed else []
     removed += [f"removed the tool {name}" for name in gone]
+    if tools and not force:
+        removed.append(
+            f"kept the tools {', '.join(folder.name for folder in tools)}; "
+            "--force-services removes them and installs them again"
+        )
     complete(removed or ["nothing to uninstall"])
 
     begin()
@@ -708,7 +730,7 @@ def steps(
 
     begin()
     complete(
-        install_tools(sdk, getattr(arguments, "verbose", False))
+        install_tools(sdk, getattr(arguments, "verbose", False), force)
         if sdk is not None
         else ["skipped: --no-services"]
     )
@@ -729,6 +751,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument(
         "--no-services", action="store_true", help="leave out Phoenix and the other tools"
+    )
+    parser.add_argument(
+        "--force-services",
+        action="store_true",
+        help="remove Phoenix and the other tools and install them again, even if they are current",
     )
     arguments, pip_arguments = parser.parse_known_args(argv)
     try:
