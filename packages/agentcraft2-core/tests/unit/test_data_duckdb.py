@@ -261,3 +261,100 @@ async def test_the_csv_source_is_refused_outside_local(tmp_path: Path, env: Depl
     config = duckdb_config(tmp_path, deployment_env=env)
     with pytest.raises(ConfigurationError, match="local development only"):
         await ServiceContainer(config, providers_with_duckdb()).start()
+
+
+# ------------------------------------------------------ queries written in code, not in files
+
+
+def module_of(**queries: str) -> str:
+    """The text of a module whose QUERIES holds these queries."""
+    return f"QUERIES = {queries!r}\n"
+
+
+def source_with_module(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, module_text: str | None, name: str
+) -> DuckDbCsvDataSource:
+    """A source whose queries come from a module ``name`` in ``tmp_path`` (none if text is None)."""
+    data_dir, _ = write_accounts_files(tmp_path)
+    if module_text is not None:
+        (tmp_path / f"{name}.py").write_text(module_text, encoding="utf-8")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    monkeypatch.delitem(sys.modules, name, raising=False)
+    options = DuckDbCsvOptions.model_validate({"data_dir": data_dir, "queries_module": name})
+    return DuckDbCsvDataSource("accounts", options, FrozenClock())
+
+
+async def test_queries_can_come_from_a_module_that_holds_their_text(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    text = module_of(
+        holders="-- description: Holders.\n-- max_rows: 5\n"
+        "SELECT holder FROM accounts ORDER BY holder"
+    )
+    source = source_with_module(tmp_path, monkeypatch, text, "queries_in_code")
+    await source.start()
+    try:
+        assert sorted(source.describe()) == ["holders"]
+        holders = [row["holder"] for row in (await source.query("holders")).as_dicts()]
+        assert holders
+        assert holders == sorted(holders)
+    finally:
+        await source.aclose()
+
+
+async def test_a_query_in_a_module_is_checked_against_the_loaded_tables(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    text = module_of(ghosts="-- description: Ghosts.\n-- max_rows: 5\nSELECT name FROM ghosts")
+    source = source_with_module(tmp_path, monkeypatch, text, "queries_with_a_ghost")
+    with pytest.raises(ConfigurationError, match="query 'ghosts' does not fit the loaded tables"):
+        await source.start()
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        {},
+        {"queries_dir": "queries", "queries_module": "somewhere"},
+    ],
+)
+def test_exactly_one_place_for_the_queries_is_named(
+    tmp_path: Path, options: dict[str, str]
+) -> None:
+    with pytest.raises(ValueError, match="exactly one of queries_dir and queries_module"):
+        DuckDbCsvOptions.model_validate({"data_dir": tmp_path, **options})
+
+
+async def test_a_module_that_cannot_be_imported_is_a_configuration_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = source_with_module(tmp_path, monkeypatch, None, "no_such_queries_module")
+    with pytest.raises(ConfigurationError, match="cannot import the queries module") as caught:
+        await source.start()
+    assert "no_such_queries_module" in (caught.value.actual or "")
+
+
+@pytest.mark.parametrize(
+    ("module_text", "problem"),
+    [
+        ("OTHER = 1\n", "has no QUERIES"),
+        ("QUERIES = ['a']\n", "QUERIES is not a mapping"),
+        ("QUERIES = {'a': 3}\n", "is not text"),
+        ("raise RuntimeError('broken module')\n", "cannot import the queries module"),
+    ],
+)
+async def test_a_module_that_does_not_hold_queries_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, module_text: str, problem: str
+) -> None:
+    source = source_with_module(tmp_path, monkeypatch, module_text, "bad_queries_module")
+    with pytest.raises(ConfigurationError, match=problem):
+        await source.start()
+
+
+async def test_queries_from_files_still_work_when_no_module_is_named(tmp_path: Path) -> None:
+    source = make_source(tmp_path)
+    await source.start()
+    try:
+        assert "accounts_by_region" in source.describe()
+    finally:
+        await source.aclose()

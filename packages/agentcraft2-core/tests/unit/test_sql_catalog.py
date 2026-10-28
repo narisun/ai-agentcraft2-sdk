@@ -18,6 +18,7 @@ from agentcraft2_core.contracts import (
     RowFilter,
     ValidationFailed,
 )
+from agentcraft2_core.testing import ACCOUNT_QUERIES
 
 QUERIES = Path(__file__).parent / "queries"
 HEADER = "-- description: A test query.\n-- max_rows: 10\n"
@@ -289,3 +290,45 @@ def test_a_result_becomes_a_plain_json_payload() -> None:
     }
     assert json.loads(json.dumps(payload)) == payload
     assert "source" not in QueryResult(columns=("a",), rows=()).to_payload()
+
+
+# ------------------------------------------------------ queries written in code, not in files
+
+
+def test_a_catalog_built_from_text_is_the_catalog_loaded_from_the_same_files(
+    tmp_path: Path,
+) -> None:
+    for name, text in ACCOUNT_QUERIES.items():
+        (tmp_path / f"{name}.sql").write_text(text, encoding="utf-8")
+    from_files = QueryCatalog.load(tmp_path)
+    from_text = QueryCatalog.from_texts(ACCOUNT_QUERIES)
+    assert from_text.describe() == from_files.describe()
+    for name in ACCOUNT_QUERIES:
+        assert from_text.get(name).outputs == from_files.get(name).outputs
+        assert from_text.get(name).expression.sql() == from_files.get(name).expression.sql()
+
+
+def test_a_catalog_built_from_text_uses_the_dialect_it_is_given() -> None:
+    assert QueryCatalog.from_texts(ACCOUNT_QUERIES, dialect="duckdb").dialect == "duckdb"
+    assert QueryCatalog.from_texts(ACCOUNT_QUERIES).dialect == "redshift"
+
+
+def test_a_catalog_built_from_text_checks_every_query_as_a_file_is_checked() -> None:
+    with pytest.raises(ConfigurationError, match="uses parameters it does not declare"):
+        QueryCatalog.from_texts({"q": HEADER + "SELECT a FROM t WHERE b = :p"})
+
+
+def test_a_problem_in_a_query_in_code_names_the_query() -> None:
+    with pytest.raises(ConfigurationError) as caught:
+        QueryCatalog.from_texts({"q": HEADER + "SELECT a FROM t WHERE b = :region"})
+    assert caught.value.__notes__ == ["in the query 'q' given in code"]
+
+
+def test_the_name_of_a_query_in_code_must_be_a_plain_identifier() -> None:
+    with pytest.raises(ConfigurationError, match="a name a tool cannot use"):
+        QueryCatalog.from_texts({"Bad-Name": HEADER + "SELECT a FROM t"})
+
+
+def test_a_query_in_code_must_be_text() -> None:
+    with pytest.raises(ConfigurationError, match="is not text"):
+        QueryCatalog.from_texts({"q": 3})  # type: ignore[dict-item]

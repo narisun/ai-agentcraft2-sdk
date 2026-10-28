@@ -220,15 +220,19 @@ def _parse_statement(name: str, sql: str, dialect: str) -> tuple[exp.Query, tupl
     return statement, tuple(outputs)
 
 
-def _load_file(path: Path, dialect: str) -> NamedQuery:
-    name = path.stem
+def _check_name(name: str, what: str, fix: str) -> None:
     if not _NAME.match(name):
         raise ConfigurationError(
-            f"query file {path.name!r} has a name a tool cannot use",
+            f"{what} has a name a tool cannot use",
             expected="lower-case letters, digits and underscores, starting with a letter",
-            actual=path.stem[:60],
-            fix="rename the file; its name is the query's name",
+            actual=name[:60],
+            fix=fix,
         )
+
+
+def _load_file(path: Path, dialect: str) -> NamedQuery:
+    name = path.stem
+    _check_name(name, f"query file {path.name!r}", "rename the file; its name is the query's name")
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
     except (OSError, UnicodeDecodeError) as exc:
@@ -309,6 +313,36 @@ class QueryCatalog:
         return cls(
             (_load_file(path, dialect) for path in sorted(directory.glob("*.sql"))), dialect=dialect
         )
+
+    @classmethod
+    def from_texts(cls, texts: Mapping[str, str], *, dialect: str = "redshift") -> QueryCatalog:
+        """Build a catalog from query text held in code, one entry per query.
+
+        Each value is a query file as :meth:`load` reads it: the header lines, then the SQL.
+        The key is the query's name. The queries are checked exactly as files are, so a
+        service can keep each query's description, parameters and SQL beside the tool that
+        uses it.
+
+        Raises:
+            ConfigurationError: If a name or a query is invalid.
+        """
+        queries = []
+        for name, text in texts.items():
+            _check_name(
+                name, f"the query {name[:60]!r} given in code", "rename the query in the mapping"
+            )
+            if not isinstance(text, str):
+                raise ConfigurationError(
+                    f"the query {name!r} given in code is not text",
+                    expected="the header lines and the SQL, as one string",
+                    actual=type(text).__name__,
+                )
+            try:
+                queries.append(_parse_query(name, text.splitlines(), dialect))
+            except ConfigurationError as error:
+                error.add_note(f"in the query {name!r} given in code")
+                raise
+        return cls(queries, dialect=dialect)
 
     @property
     def dialect(self) -> str:
