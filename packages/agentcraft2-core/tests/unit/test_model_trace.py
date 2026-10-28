@@ -103,7 +103,10 @@ async def test_trace_captures_complete_messages_tools_and_provider_reply(tmp_pat
     assert request["binding_options"] == {"tool_choice": "any"}
     assert request["invocation_options"] == {"stop": ["STOP"]}
     assert response["event"] == "model.response"
-    assert response["response"] == actual.model_dump()
+    # The trace holds what the provider sent; the caller's reply adds the attempt count.
+    returned = actual.model_dump()
+    returned["response_metadata"].pop("agentcraft2_attempts")
+    assert response["response"] == returned
     for key in (
         "call_id",
         "attempt",
