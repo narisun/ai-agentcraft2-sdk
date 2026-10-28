@@ -33,6 +33,10 @@ ac2 errors                              # list what failed, with the stack trace
 | `ac2 config options [PORT [NAME]]` | The adapters of a section, or the options of one adapter with their defaults. |
 | `ac2 config schema` | A JSON Schema of `agentcraft2.settings.toml`, for an editor or a coding assistant. |
 | `ac2 check` | What CI runs: lint, format, types, tests and the policy samples. Stops at once, with the fix, if the services are not installed. |
+| `ac2 data model draft DATA_DIR` | Draft a `data_model.csv` from a folder of CSV files: columns, types, keys and joins, with the rest marked TODO. See [the data model](data-model.md). |
+| `ac2 data model diff DATA_DIR` | List where the CSV files differ from an existing `data_model.csv`. Exit code 1 if there is a difference. |
+| `ac2 data model check DATA_DIR` | Check a `data_model.csv` against the standard and the files. Exit code 1 if there is an error. |
+| `ac2 data model validate DATA_DIR` | Check every value in the CSV files against the model with DuckDB: dates, numbers, yes/no values, empties, repeated keys, unmatched joins. Each problem has its file, row, line and column. Exit code 1 if there is an error. |
 | `ac2 eval [SERVICE]` | Run the evals of a service with a real model. |
 | `ac2 policy test` | Try the policy samples against the rules, and with `--opa` against OPA. |
 | `ac2 graph AGENT` | The graph of an agent as a Mermaid diagram. |

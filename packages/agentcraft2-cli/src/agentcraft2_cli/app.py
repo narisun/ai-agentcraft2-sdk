@@ -13,6 +13,7 @@ _CONTEXT = {"help_option_names": ["-h", "--help"]}
 
 _SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Start", ("init", "new", "link", "install")),
+    ("Data", ("data",)),
     ("Verify", ("doctor", "config", "check", "eval", "policy", "graph")),
     ("Run and watch", ("run", "services", "logs", "errors")),
     ("Keep and ship", ("registry", "update", "deploy")),
