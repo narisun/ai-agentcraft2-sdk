@@ -44,6 +44,7 @@ from langgraph.managed import RemainingSteps
 from langgraph.prebuilt import ToolNode
 from langgraph.types import Command, RetryPolicy
 
+from rmprep_v2.activity import note, tool_activity
 from rmprep_v2.cards import card_id
 from rmprep_v2.citations import CitationBasis, citation_issues, other_version_refs, resolve
 from rmprep_v2.clients import client_names, recent_client_lookup, resolved_clients
@@ -192,6 +193,7 @@ def build_qna_graph(
         return now().timestamp()
 
     async def select(state: QnAState) -> Command[Any]:
+        await note("selecting", "Choosing the memo")
         current = turns(state["messages"])[-1]
         selection = state.get("selection") or select_context(
             str(current[0].content),
@@ -244,6 +246,7 @@ def build_qna_graph(
         chosen = [identity for identity in dict.fromkeys(wanted) if identity in known][:MAX_IDS]
         if not chosen:
             return Command(goto="generate")
+        await note("reading", "Reading related records", f"{len(chosen)} records")
         arguments = {"card_ids": chosen}
         identity = "prefetch-" + hashlib.sha256(",".join(chosen).encode()).hexdigest()[:16]
         request = AIMessage(
@@ -341,6 +344,9 @@ def build_qna_graph(
             return stop(reason, ledger, context_diagnostics=context.diagnostics)
 
         ledger = reserve(ledger, limits, planned)
+        await note(
+            *(("revising", "Revising the answer") if issues else ("drafting", "Writing the answer"))
+        )
         reply = await model.ainvoke(request)
         reply = reply.model_copy(
             update={
@@ -399,6 +405,8 @@ def build_qna_graph(
             return Command(goto="generate")
         reply: AIMessage = attempt["reply"]
         selection = attempt["selection"]
+        if not reply.tool_calls:
+            await note("checking", "Checking citations and figures")
         # What the answer may cite is what the final model call was shown, as recorded then.
         issues = response_issues(reply, attempt["messages"][1:], attempt["limit"], citations=False)
         released: list[dict[str, str]] = []
@@ -447,6 +455,7 @@ def build_qna_graph(
         ledger = note_tool_calls(
             ledger, [(call["name"], call["args"]) for call in reply.tool_calls]
         )
+        await note(*tool_activity([call["name"] for call in reply.tool_calls]))
         return Command(update={"messages": [reply], "ledger": ledger, "issues": []}, goto="tools")
 
     async def commit(state: QnAState) -> dict[str, Any]:
@@ -505,6 +514,7 @@ def build_qna_graph(
 
     async def limitation(state: QnAState) -> dict[str, Any]:
         reason = state.get("outcome") or "unknown"
+        await note("limited", "Ending with what could be verified", reason)
         current = turns(state["messages"])[-1]
         text = limitation_text(reason)
         reply = AIMessage(

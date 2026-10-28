@@ -543,3 +543,71 @@ input and checkpoint differences are large enough to read as an effect.
 - Input tokens of a failed physical attempt are unknown, so a retry is charged at the planned input.
 - The two SDK branches are local and unpushed; the generated docs and the guide were regenerated for
   the new Bedrock options.
+
+## V6 results: the activity stream, and why there is no fan-out
+
+### What was built
+
+- **SDK change, separate branch** `feat/live-activity-events` (from `main`, local, unpushed). A graph
+  node calls `await report_activity(kind, label, detail)`. The live `/invoke` response sends it as an
+  `activity` event beside the drafts, with the request's `thread_id` and `request_id` and a sequence
+  number. Agent Lab lists the lines in an expandable "Activity" step while the agent works, collapses
+  it to "Activity · N steps" when the answer is ready, and does not save it: reopening the
+  conversation shows the answers only (the data layer stores no steps).
+- **Bounds.** A lowercase `kind` word of at most 32 characters, a label of at most 120, a detail of at
+  most 200, one line each (line breaks flattened), at most 64 lines per request. Activity is advisory:
+  a missing live run, another request's run, an invalid kind, a full queue or a failing sink changes
+  nothing for the request, and the request never waits for a reader that is behind. A malformed or
+  foreign `activity` event from an agent is an invalid-response error in the UI, like any other
+  malformed event.
+- **rmprep-v2** (`activity.py`). The Q&A graph reports a fixed label at each stage: choosing the memo,
+  reading related records (with a count), writing the answer, searching or reading or calculating or
+  fetching (by what the tool does, counted rather than listed), checking citations and figures,
+  revising, and, when a limit ends the turn, the reason code. Nothing else is reported: not the
+  question, a draft, a tool argument or result, or a record's text. A test pins this with markers in
+  the draft, the question and the arguments. The import of the SDK function is tolerant, so an SDK
+  without it simply shows no activity.
+- **Step stream.** `steps()` (the `/invoke/stream` events) used to carry the model's prose beside a
+  tool call as message content. It now sends that content empty; a rejected draft was already absent
+  (it lives in an untracked channel), and a test pins both.
+
+### Tested
+
+- SDK: 18 tests for the feed, parser and service in the UI package, 15 for publishing and the wire in
+  core, and a browser-protocol test through a real Chainlit server (the step opens with the lines,
+  collapses with the final name, and a resumed conversation holds no tool step or activity text).
+  Core unit suite 1,725 passed; the one failure needs the AWS package, which the scratch environment
+  lacks. UI suite 386 passed.
+- rmprep-v2: 21 activity tests, plus one through the real service and the live response that checks the
+  sequence on the wire. That test is skipped when the installed SDK has no `report_activity`.
+
+### Not done, and why
+
+- **`Send` fan-out analysts: not built.** Three reasons. (1) Nothing here can measure whether it helps:
+  the harness scripts the model, so it can show only that a design lets a right answer through, not
+  that parallel analysts reason better. (2) The request ledger is one dict without a reducer; parallel
+  branches that each reserve model calls and tokens would need an atomic, order-independent merge, and
+  the gates in fixed order (a reservation before every call) would no longer hold. (3) The one case
+  fan-out would target, comparison, fails for a retrieval reason, shown below.
+- **The comparison finding (QA-022).** In rmprep-v2 the read-ahead is chosen by searching for the
+  question's words, so for "What is new in version 2?" it does not find the records that are new, and
+  the answer cites records the model was never shown; the citation check correctly refuses it (the
+  old design passes it only because it sends the whole evidence pack, 50.7k tokens). Raising the
+  read-ahead from 8 to 30 changed nothing, because one `get_evidence` call is capped at 10 cards. The
+  scripted memo here cites a single record, so a real memo may cite more; that is unmeasured. The
+  simpler remedy, not built, is a deterministic comparison of the two versions' cards (records added,
+  removed or changed between the sources), read ahead for a comparison question. Try that before any
+  fan-out.
+- **`stream_events(version="v3")` was not adopted.** `astream` is kept. Activity is published from the
+  nodes, so it does not depend on the streaming API.
+- **The memo agent reports no activity.** Memo generation is the longest wait, but its graph is
+  rmprep's unchanged; adding the same labels is small and was left for when the memo agent adopts the
+  new nodes.
+- **No measured latency.** The design's gate (activity visible within one second) was not measured:
+  there was no live model, and the first line is sent as the graph's first node starts, before any
+  model call.
+- **Activity is not durable.** It is shown while the agent works and collapsed afterwards, in that
+  browser only. The design's "persistent activity" would need the data layer to store it.
+- **Live drafts remain.** Agent Lab's existing provisional draft panel streams model text while the
+  agent works; the design asks that reasoning drafts not be exposed. That behaviour belongs to the
+  SDK's live drafts (`live_updates`), not to this change, and is a decision for the owner of the agent.

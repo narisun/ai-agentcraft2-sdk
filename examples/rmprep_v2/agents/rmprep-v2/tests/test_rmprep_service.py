@@ -10,6 +10,7 @@ from unittest.mock import Mock
 import httpx
 import pytest
 from agentcraft2_core import Principal
+from agentcraft2_core.integrations import langgraph as langgraph_sdk
 from agentcraft2_core.integrations.http import ServiceLifecycle, build_agent_app
 from agentcraft2_core.testing import FakeChatModelProvider, FakeIdentityVerifier, Fakes
 from langchain_core.messages import AIMessage
@@ -173,3 +174,37 @@ async def test_text_blocks_render_as_prose_and_json_envelope_stays_compatible(li
         body = response.json()
         assert set(body) == {"output", "thread_id", "request_id"}
     assert body["output"]["answer"] == "A readable answer."
+
+
+@pytest.mark.skipif(
+    not hasattr(langgraph_sdk, "report_activity"),
+    reason="needs the SDK change that sends activity events (feat/live-activity-events)",
+)
+async def test_a_live_response_tells_the_reader_what_the_agent_is_doing() -> None:
+    """Through the real service and the SDK's live response: fixed status lines, then the result."""
+    kit = fakes("Hello there.")
+    async with kit.container() as services:
+        lifecycle = ServiceLifecycle(services.validate)
+        app = await build_app(services, lifecycle)
+        await lifecycle.start()
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app), base_url="http://agent.test"
+        ) as http:
+            response = await http.post(
+                "/invoke",
+                json=question("Hello?"),
+                headers={**ADA, "accept": "text/event-stream"},
+            )
+    frames = [f for f in response.text.split("\n\n") if f.startswith("event:")]
+    names = [f.split("\n", 1)[0].removeprefix("event: ") for f in frames]
+    assert names[-1] == "result"
+    lines = [json.loads(f.split("data: ", 1)[1]) for f in frames if f.startswith("event: activity")]
+    assert [(line["seq"], line["kind"], line["label"]) for line in lines] == [
+        (1, "selecting", "Choosing the memo"),
+        (2, "drafting", "Writing the answer"),
+        (3, "checking", "Checking citations and figures"),
+    ]
+    assert {(line["thread_id"], line["request_id"]) for line in lines} == {
+        ("th-1", json.loads(frames[-1].split("data: ", 1)[1])["request_id"])
+    }
+    assert "Hello there." not in "".join(f for f in frames if f.startswith("event: activity"))

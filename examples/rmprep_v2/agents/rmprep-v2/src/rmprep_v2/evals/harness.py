@@ -8,7 +8,7 @@ state, the checkpoint size and the evidence store.
 from __future__ import annotations
 
 import sqlite3
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -61,6 +61,8 @@ class Run:
     """The graph nodes that ran for the last question, in order."""
     diagnostics: dict[str, Any]
     database: Path
+    log: list[dict[str, Any]] = field(default_factory=list)
+    """Every step streamed for the last question, as a caller of ``steps`` sees it."""
 
 
 def checkpoint_bytes(database: Path) -> int:
@@ -126,9 +128,10 @@ async def converse(
             caller = await services.authenticate(None, application=APPLICATION, thread_id=thread)
             nodes: list[str] = []
             for question in questions:
-                nodes = []
+                nodes, log = [], []
                 async for step in steps(graph, services, caller, question):
                     nodes.append(step["node"])
+                    log.append(step)
             with bind_request_context(caller):
                 saved = await graph.aget_state(services.invocation(caller)["config"])
             prompts = [
@@ -145,4 +148,5 @@ async def converse(
                 nodes=nodes,
                 diagnostics=dict(saved.values.get("context_diagnostics", {})),
                 database=database,
+                log=log,
             )

@@ -180,6 +180,16 @@ async def response(
     return output
 
 
+def _shown(message: Any) -> dict[str, Any]:
+    """What a step streams of a message: no prose beside a tool call (the model thinking aloud)."""
+    calls = [call["name"] for call in getattr(message, "tool_calls", [])]
+    return {
+        "type": message.type,
+        "content": "" if calls else str(message.content),
+        "tool_calls": calls,
+    }
+
+
 async def steps(
     graph: CompiledStateGraph[Any, Any, Any, Any],
     services: ServiceContainer,
@@ -207,14 +217,7 @@ async def steps(
             yield {
                 "node": f"{specialist}/{node}" if specialist else node,
                 "route": change.get("route") if isinstance(change, dict) else None,
-                "messages": [
-                    {
-                        "type": message.type,
-                        "content": str(message.content),
-                        "tool_calls": [call["name"] for call in getattr(message, "tool_calls", [])],
-                    }
-                    for message in added
-                ],
+                "messages": [_shown(message) for message in added],
             }
 
 
