@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import importlib
 import importlib.util
 import re
 from collections.abc import Mapping
@@ -22,7 +23,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from agentcraft2_core.adapters.sql import CompiledQuery, QueryCatalog, compile_query, finish_result
 from agentcraft2_core.contracts import (
@@ -65,14 +66,28 @@ class DuckDbCsvOptions(OptionsModel):
     Attributes:
         data_dir: Directory of CSV files. Each file becomes a table.
         queries_dir: Directory of named query files.
+        queries_module: Instead of ``queries_dir``: the import name of a module of the service
+            whose ``QUERIES`` maps each query's name to its text (the header lines, then the
+            SQL). It lets a service keep a query beside the tool that uses it. Exactly one of
+            ``queries_dir`` and ``queries_module`` is given.
         dialect: The dialect the queries are written in.
         timeout_seconds: How long one query may run.
     """
 
     data_dir: Path
-    queries_dir: Path
+    queries_dir: Path | None = None
+    queries_module: str | None = None
     dialect: str = "redshift"
     timeout_seconds: float = Field(default=30.0, gt=0)
+
+    @model_validator(mode="after")
+    def _one_place_for_the_queries(self) -> DuckDbCsvOptions:
+        if (self.queries_dir is None) == (self.queries_module is None):
+            raise ValueError(
+                "name exactly one of queries_dir and queries_module: "
+                "the folder of query files, or the module that holds the queries"
+            )
+        return self
 
 
 class DuckDbCsvDataSource:
@@ -105,9 +120,38 @@ class DuckDbCsvDataSource:
                 "the duckdb_csv data source needs DuckDB; install it with "
                 "'pip install \"agentcraft2-core[duckdb]\"'"
             )
-        catalog = QueryCatalog.load(self._options.queries_dir, dialect=self._options.dialect)
+        catalog = self._catalog_of_options()
         connection = await asyncio.to_thread(self._load, catalog)
         self._catalog, self._connection = catalog, connection
+
+    def _catalog_of_options(self) -> QueryCatalog:
+        options = self._options
+        if options.queries_dir is not None:
+            return QueryCatalog.load(options.queries_dir, dialect=options.dialect)
+        module_name = options.queries_module or ""
+        try:
+            module = importlib.import_module(module_name)
+        except Exception as exc:
+            raise ConfigurationError(
+                f"data source {self._name!r}: cannot import the queries module",
+                expected="the import name of a module of this service, such as 'my_app.queries'",
+                actual=f"{module_name!r}: {describe(exc)}",
+                fix="correct queries_module, and install the service so it can be imported",
+            ) from exc
+        queries = getattr(module, "QUERIES", None)
+        if queries is None:
+            raise ConfigurationError(
+                f"data source {self._name!r}: the queries module has no QUERIES",
+                expected="a module-level QUERIES mapping of query name to query text",
+                actual=f"{module_name!r} defines none",
+            )
+        if not isinstance(queries, Mapping):
+            raise ConfigurationError(
+                f"data source {self._name!r}: QUERIES is not a mapping",
+                expected="a mapping of query name to query text",
+                actual=f"{module_name}.QUERIES is a {type(queries).__name__}",
+            )
+        return QueryCatalog.from_texts(queries, dialect=options.dialect)
 
     def _load(self, catalog: QueryCatalog) -> duckdb.DuckDBPyConnection:
         import duckdb
