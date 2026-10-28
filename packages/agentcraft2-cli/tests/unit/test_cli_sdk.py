@@ -12,7 +12,12 @@ from agentcraft2_cli import __version__
 from agentcraft2_cli import sdk as installer
 from agentcraft2_cli.errors import CliError
 from agentcraft2_cli.services import bootstrap, packages
-from agentcraft2_cli.services.installed import check_path_length, installed_problem
+from agentcraft2_cli.services.installed import (
+    check_path_length,
+    fingerprint,
+    installed_problem,
+    outdated,
+)
 from agentcraft2_cli.services.registry import (
     INSTALLED,
     LAB,
@@ -134,9 +139,149 @@ def test_a_failed_install_keeps_what_was_there(tmp_path: Path) -> None:
     folder = installed_dir(sdk, "phoenix")
     before = sorted(path.name for path in packages.site_packages(folder).iterdir())
     with pytest.raises(CliError, match="exit code 1"):
-        install(sdk, pip=lambda arguments, folder: 1)
+        install(sdk, pip=lambda arguments, folder: 1, force=True)
     assert sorted(path.name for path in packages.site_packages(folder).iterdir()) == before
     assert installed_problem(PHOENIX, folder) is None
+
+
+# ------------------------------------------- tools that are current are not installed again
+
+
+def checkout_of(tmp_path: Path, text: str = "[project]\nname = 'x'\n") -> LibrarySource:
+    """A checkout whose tools have a pyproject.toml, as a stand-in for the real packages."""
+    for name in ("agentcraft2-phoenix", "agentcraft2-core", "agentcraft2-ui"):
+        folder = tmp_path / "checkout" / "packages" / name
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "pyproject.toml").write_text(text, encoding="utf-8")
+    return LibrarySource(kind="path", path=str(tmp_path / "checkout"))
+
+
+def run_install(
+    sdk: Path, library: LibrarySource, **changes: object
+) -> tuple[list[str], list[str]]:
+    """Install; return what pip was asked to install (by service) and what was said."""
+    asked: list[Sequence[str]] = []
+    said: list[str] = []
+    install(sdk, library, pip=writes_packages(asked), say=said.append, **changes)
+    return [call[-1].rsplit("agentcraft2-", 1)[-1] for call in asked], said
+
+
+def test_a_second_install_leaves_current_tools_alone(tmp_path: Path) -> None:
+    sdk, library = tmp_path / "sdk", checkout_of(tmp_path)
+    first, _ = run_install(sdk, library)
+    assert first == ["phoenix[viewer]", "ui[chat]"]
+    marker = packages.site_packages(installed_dir(sdk, "phoenix")) / "marker.txt"
+    marker.write_text("kept", encoding="utf-8")
+
+    asked, said = run_install(sdk, library)
+
+    assert asked == []
+    assert marker.read_text(encoding="utf-8") == "kept"
+    assert len(said) == 2
+    assert all("installed and current" in line and "skipped" in line for line in said)
+    assert "--force-services" in said[0]
+
+
+def test_force_installs_every_tool_again_even_when_current(tmp_path: Path) -> None:
+    sdk, library = tmp_path / "sdk", checkout_of(tmp_path)
+    run_install(sdk, library)
+    asked, said = run_install(sdk, library, force=True)
+    assert asked == ["phoenix[viewer]", "ui[chat]"]
+    assert not any("skipped" in line for line in said)
+
+
+def test_a_changed_dependency_installs_the_tool_that_uses_it_and_only_that_one(
+    tmp_path: Path,
+) -> None:
+    sdk, library = tmp_path / "sdk", checkout_of(tmp_path)
+    run_install(sdk, library)
+    # Phoenix is installed from its own package only; Agent Lab also from the core package.
+    core = tmp_path / "checkout" / "packages" / "agentcraft2-core" / "pyproject.toml"
+    core.write_text("[project]\nname = 'x'\ndependencies = ['y']\n", encoding="utf-8")
+
+    asked, said = run_install(sdk, library)
+
+    assert asked == ["ui[chat]"]
+    assert any(line.startswith("phoenix is installed and current") for line in said)
+    assert any(line.startswith("lab must be installed again") for line in said)
+    assert any("have changed since it was installed" in line for line in said)
+
+
+def test_a_change_to_the_code_alone_is_not_a_reason_to_install(tmp_path: Path) -> None:
+    sdk, library = tmp_path / "sdk", checkout_of(tmp_path)
+    run_install(sdk, library)
+    source = tmp_path / "checkout" / "packages" / "agentcraft2-ui" / "module.py"
+    source.write_text("print('edited')\n", encoding="utf-8")
+    asked, _ = run_install(sdk, library)
+    assert asked == []
+
+
+def test_line_endings_of_a_checkout_do_not_change_the_fingerprint(tmp_path: Path) -> None:
+    library = checkout_of(tmp_path, "[project]\nname = 'x'\n")
+    before = fingerprint(PHOENIX, library)
+    # write_text translates newlines on Windows; write the bytes to be sure of CRLF
+    pyproject = tmp_path / "checkout" / "packages" / "agentcraft2-phoenix" / "pyproject.toml"
+    pyproject.write_bytes(b"[project]\r\nname = 'x'\r\n")
+    assert fingerprint(PHOENIX, library) == before
+
+
+def test_another_version_of_the_sdk_or_a_missing_fingerprint_installs_again(
+    tmp_path: Path,
+) -> None:
+    sdk, library = tmp_path / "sdk", checkout_of(tmp_path)
+    run_install(sdk, library)
+    folder = installed_dir(sdk, "phoenix")
+    assert outdated(PHOENIX, folder, library) is None
+    assert "installed by SDK" in (outdated(PHOENIX, folder, library, "9.9") or "")
+    record = folder / INSTALLED
+    old = json.loads(record.read_text("utf-8"))
+    del old["fingerprint"]  # a record made before fingerprints existed
+    record.write_text(json.dumps(old), encoding="utf-8")
+    asked, _ = run_install(sdk, library)
+    assert asked == ["phoenix[viewer]"]
+
+
+def test_a_damaged_tool_is_installed_again_without_force(tmp_path: Path) -> None:
+    sdk, library = tmp_path / "sdk", checkout_of(tmp_path)
+    run_install(sdk, library)
+    (installed_dir(sdk, "lab") / INSTALLED).unlink()
+    asked, _ = run_install(sdk, library)
+    assert asked == ["ui[chat]"]
+
+
+def test_when_everything_is_current_no_disk_or_room_check_is_made(tmp_path: Path) -> None:
+    sdk, library = tmp_path / "sdk", checkout_of(tmp_path)
+    run_install(sdk, library)
+
+    def fail(folder: Path) -> object:
+        raise AssertionError("nothing is installed, so nothing needs room")
+
+    run_install(sdk, library, disk_problem=fail, free_space=fail)
+
+
+def test_a_tool_in_use_is_named_instead_of_failing_with_a_system_error(tmp_path: Path) -> None:
+    sdk, library = tmp_path / "sdk", checkout_of(tmp_path)
+
+    def locked(arguments: Sequence[str], folder: Path) -> int:
+        raise PermissionError("the file is in use")
+
+    with pytest.raises(CliError, match="could not be replaced") as caught:
+        install(sdk, library, pip=locked)
+    assert "ac2 services stop" in (caught.value.fix or "")
+
+
+def test_main_passes_force_on(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[object] = []
+    monkeypatch.setenv("AC2_SDK_PATH", str(tmp_path / "sdk"))
+    monkeypatch.setattr(
+        installer, "install_services", lambda sdk, library, **given: seen.append(given["force"])
+    )
+    checkout = tmp_path / "checkout"
+    (checkout / "packages" / "agentcraft2-core").mkdir(parents=True)
+    (checkout / "packages" / "agentcraft2-core" / "pyproject.toml").write_text("", encoding="utf-8")
+    assert installer.main(["install", "--checkout", str(checkout)]) == 0
+    assert installer.main(["install", "--checkout", str(checkout), "--force"]) == 0
+    assert seen == [False, True]
 
 
 # ----------------------------------------------------------- what makes an install usable

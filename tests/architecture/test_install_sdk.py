@@ -23,9 +23,20 @@ OLD = install_sdk.Installed("agentcraft2-core", "0.0.9", editable=False, locatio
 
 
 def arguments(
-    *, dev: bool = False, editable: bool = False, verbose: bool = False, no_services: bool = False
+    *,
+    dev: bool = False,
+    editable: bool = False,
+    verbose: bool = False,
+    no_services: bool = False,
+    force_services: bool = False,
 ) -> argparse.Namespace:
-    return argparse.Namespace(dev=dev, editable=editable, verbose=verbose, no_services=no_services)
+    return argparse.Namespace(
+        dev=dev,
+        editable=editable,
+        verbose=verbose,
+        no_services=no_services,
+        force_services=force_services,
+    )
 
 
 def completed(returncode: int = 0, stdout: str = "", stderr: str = "") -> Any:
@@ -64,7 +75,7 @@ def calls(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 def test_the_steps_run_in_order_and_each_is_marked_complete(
     calls: list[str], capsys: pytest.CaptureFixture[str]
 ) -> None:
-    assert install_sdk.main([]) == 0
+    assert install_sdk.main(["--force-services"]) == 0
     assert calls == [
         "check",
         "find",
@@ -98,6 +109,9 @@ def test_the_install_waits_for_a_successful_uninstall(
 
     monkeypatch.setattr(install_sdk, "uninstall", refuse)
     assert install_sdk.main([]) == 1
+    assert calls == ["check", "find", "build"]
+    calls.clear()
+    assert install_sdk.main(["--force-services"]) == 1
     assert calls == ["check", "find", "build", "remove tools"]
     error = capsys.readouterr().err
     assert "error: stopped at step 4 of 7, uninstalling the installed sdk:" in error
@@ -137,7 +151,7 @@ def test_nothing_is_uninstalled_when_nothing_is_installed(
     monkeypatch.setattr(install_sdk, "find_installed", lambda: [])
     monkeypatch.setattr(install_sdk, "installed_tools", lambda sdk: [])
     monkeypatch.setattr(install_sdk, "remove_tools", lambda sdk: [])
-    assert install_sdk.main([]) == 0
+    assert install_sdk.main(["--force-services"]) == 0
     assert "uninstall" not in calls
     assert "nothing to uninstall" in capsys.readouterr().out
 
@@ -517,16 +531,72 @@ def test_the_tools_can_be_left_out(calls: list[str], capsys: pytest.CaptureFixtu
 def test_the_tools_are_installed_after_the_sdk_and_checked_after_that(
     calls: list[str],
 ) -> None:
-    assert install_sdk.main([]) == 0
+    assert install_sdk.main(["--force-services"]) == 0
     assert calls.index("install") < calls.index("tools") < calls.index("verify")
     assert calls.index("remove tools") < calls.index("uninstall")
     assert calls[-2:] == ["check tools", "note"]
 
 
+def test_tools_that_are_installed_are_kept_unless_the_run_is_forced(
+    calls: list[str], capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert install_sdk.main([]) == 0
+    assert "remove tools" not in calls
+    assert "tools" in calls  # the SDK decides, tool by tool, which are current
+    assert "kept the tools phoenix; --force-services removes them" in capsys.readouterr().out
+
+
+def test_a_forced_run_removes_the_tools_and_tells_the_installer_to_install_all(
+    monkeypatch: pytest.MonkeyPatch, calls: list[str]
+) -> None:
+    given: list[tuple[bool, bool]] = []
+
+    def tools(sdk: Path, verbose: bool = False, force: bool = False) -> list[str]:
+        given.append((verbose, force))
+        return ["installed"]
+
+    monkeypatch.setattr(install_sdk, "install_tools", tools)
+    assert install_sdk.main(["--force-services"]) == 0
+    assert "remove tools" in calls
+    assert given == [(False, True)]
+    given.clear()
+    assert install_sdk.main([]) == 0
+    assert given == [(False, False)]
+
+
+def test_the_installer_is_told_to_force_only_when_the_run_is_forced(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    seen: list[list[str]] = []
+
+    def run(command: list[str], **_: Any) -> Any:
+        seen.append(command)
+        return completed()
+
+    monkeypatch.setattr(subprocess, "run", run)
+    install_sdk.install_tools(tmp_path)
+    install_sdk.install_tools(tmp_path, force=True)
+    assert "--force" not in seen[0]
+    assert seen[1][-1] == "--force"
+
+
+def test_a_tool_that_is_running_does_not_stop_a_run_that_leaves_it_alone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tools_folder(monkeypatch, _Disks())
+    monkeypatch.setattr(
+        install_sdk, "running_tools", lambda sdk: [("phoenix", Path("workspace/.agentcraft2"))]
+    )
+    (line,) = install_sdk.check_tools_folder(Path("C:/sdk"), replace_all=False)
+    assert "none is running" not in line
+    with pytest.raises(install_sdk.SetupError, match="tool phoenix is running"):
+        install_sdk.check_tools_folder(Path("C:/sdk"))
+
+
 def test_a_failed_tool_install_stops_with_the_sdk_installed_and_says_so(
     calls: list[str], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    def fail(sdk: Path, verbose: bool = False) -> None:
+    def fail(sdk: Path, verbose: bool = False, force: bool = False) -> None:
         raise install_sdk.SetupError("the SDK's tools could not be installed", "run it again")
 
     monkeypatch.setattr(install_sdk, "install_tools", fail)

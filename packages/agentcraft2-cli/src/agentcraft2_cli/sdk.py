@@ -26,7 +26,12 @@ from agentcraft2_cli import __version__
 from agentcraft2_cli.commands.common import library_source
 from agentcraft2_cli.errors import CliError, report_error
 from agentcraft2_cli.services import packages
-from agentcraft2_cli.services.installed import check_path_length, installed_problem
+from agentcraft2_cli.services.installed import (
+    check_path_length,
+    fingerprint,
+    installed_problem,
+    outdated,
+)
 from agentcraft2_cli.services.registry import INSTALLED, SERVICES, ServiceSpec, installed_dir
 from agentcraft2_cli.workspace import LibrarySource
 from agentcraft2_core.config import sdk_path, sdk_variable
@@ -50,8 +55,13 @@ def install_services(
     check_paths: Callable[[ServiceSpec, Path], None] = check_path_length,
     version: str = __version__,
     quiet: bool = False,
+    force: bool = False,
 ) -> None:
     """Install the services into the SDK's folder, checking everything before the first change.
+
+    A service that is already installed, for this SDK and this Python, from the same requirements,
+    is left alone: its packages are large and rarely change, and the code of a checkout is
+    installed editable. A service that is missing, damaged or out of date is installed.
 
     Args:
         sdk: The SDK's own folder.
@@ -64,13 +74,29 @@ def install_services(
         check_paths: Refuses a folder whose files Windows would not open; a test passes its own.
         version: The SDK's version, recorded with each installed service.
         quiet: Whether pip prints only problems, not every package it collects.
+        force: Whether to install every service even if it is current.
 
     Raises:
         CliError: At the first problem, with what to do about it. Nothing is changed by a
             problem found before the first install, and a service whose install fails keeps
             its earlier packages.
     """
-    chosen = [spec for spec in (specs or list(SERVICES.values())) if spec.requirements]
+    wanted = [spec for spec in (specs or list(SERVICES.values())) if spec.requirements]
+    chosen = []
+    for spec in wanted:
+        target = installed_dir(sdk, spec.name)
+        why = None if force else outdated(spec, target, library, version)
+        if not force and why is None:
+            say(
+                f"{spec.name} is installed and current in {target}; skipped. "
+                "To install it again, use --force-services of tools/install_sdk.py"
+            )
+            continue
+        chosen.append(spec)
+        if not force and target.exists():
+            say(f"{spec.name} must be installed again: {why}")
+    if not chosen:
+        return
     reason = disk_problem(sdk)
     if reason is not None:
         raise CliError(
@@ -93,12 +119,22 @@ def install_services(
     for spec in chosen:
         target = installed_dir(sdk, spec.name)
         say(f"Installing {spec.name} into {target}")
-        packages.install(target, _requirements(spec, library), pip=pip, quiet=quiet)
+        try:
+            packages.install(target, _requirements(spec, library), pip=pip, quiet=quiet)
+        except OSError as problem:
+            raise CliError(
+                f"the packages of {spec.name} could not be replaced ({problem})",
+                expected=f"nothing to use the files below {target}",
+                actual="a file or folder there is in use, usually by the running service",
+                fix="stop it with 'ac2 services stop', then run the installer again. "
+                "The earlier packages were kept",
+            ) from problem
         (target / INSTALLED).write_text(
             json.dumps(
                 {
                     "service": spec.name,
                     "sdk_version": version,
+                    "fingerprint": fingerprint(spec, library),
                     "installed": datetime.now(UTC).isoformat(timespec="seconds"),
                 }
             ),
@@ -158,6 +194,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     install.add_argument(
         "--verbose", action="store_true", help="show everything pip prints, not only problems"
     )
+    install.add_argument(
+        "--force",
+        action="store_true",
+        help="install every service again, even one that is installed and current",
+    )
     commands.add_parser("check", help="say whether the services are installed and usable")
     arguments = parser.parse_args(argv)
     try:
@@ -167,6 +208,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 sdk,
                 _library(arguments.checkout, arguments.version),
                 quiet=not arguments.verbose,
+                force=arguments.force,
             )
         else:
             check_services(sdk)
