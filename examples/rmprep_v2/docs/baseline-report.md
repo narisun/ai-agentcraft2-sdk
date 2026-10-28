@@ -595,7 +595,7 @@ input and checkpoint differences are large enough to read as an effect.
   old design passes it only because it sends the whole evidence pack, 50.7k tokens). Raising the
   read-ahead from 8 to 30 changed nothing, because one `get_evidence` call is capped at 10 cards. The
   scripted memo here cites a single record, so a real memo may cite more; that is unmeasured. The
-  simpler remedy, not built, is a deterministic comparison of the two versions' cards (records added,
+  simpler remedy, built afterwards (next section), is a deterministic comparison of the two versions' cards (records added,
   removed or changed between the sources), read ahead for a comparison question. Try that before any
   fan-out.
 - **`stream_events(version="v3")` was not adopted.** `astream` is kept. Activity is published from the
@@ -611,3 +611,28 @@ input and checkpoint differences are large enough to read as an effect.
 - **Live drafts remain.** Agent Lab's existing provisional draft panel streams model text while the
   agent works; the design asks that reasoning drafts not be exposed. That behaviour belongs to the
   SDK's live drafts (`live_updates`), not to this change, and is a decision for the owner of the agent.
+
+### Follow-up: reading ahead what differs between two versions
+
+- **What was built.** `version_diff.py` pairs the cards of two versions of one client's memo by
+  `source_ref` and classes each record as added, removed, changed (its values or the limits of its
+  section differ) or unchanged. The card ID, source ID, date and token estimate belong to the version,
+  not the record, so they never count as a change, and the order of keys inside a record does not
+  matter. For a question about two versions (`comparable`: two different memos of the same client,
+  both with stored sources), `prefetch` reads the differing cards first, the newer side of what is new
+  or changed, then the older side of what changed, then what was removed, capped at the ten cards of
+  one `get_evidence` call; the search hits and the memo's own citations fill what is left. Two clients,
+  one memo, more than two memos, or a memo without stored sources get the read-ahead they had before.
+  No model is involved and nothing is summarized.
+- **Measured, same 38 draft cases, scripted model.** rmprep-v2 accepts 36 of 38 (35 before); the
+  comparison family is 1 of 2 (0 of 2 before), the same as rmprep. QA-022 is now accepted, with its
+  six cited records read ahead because they are the records that differ. Largest model input is 10.5k
+  tokens against 50.7k for rmprep, and the mean checkpoint is 0.27 MB against 1.18 MB. The two cases
+  left are QA-023, which both designs answer with a question about which memo, and QA-037, which asks
+  for a memo by explicit date and ends in a limitation answer; the selection-rule decision on QA-037
+  is still open.
+- **Limits of that result.** One case moved, so this shows the mechanism works on the case that
+  motivated it, not a rate. The case set is the unreviewed draft set. The scripted memo cites a single
+  record, so a real memo that cites more would also shrink the problem; that was not measured.
+  When more than ten records differ, only the first ten are read ahead and the model is not told how
+  many were left out; telling it (a count from `VersionDiff.summary()`) is not built.

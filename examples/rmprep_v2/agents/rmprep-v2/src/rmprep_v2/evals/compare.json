@@ -11,7 +11,7 @@
         "median_input_tokens": 6635,
         "mean_model_calls": 1.5,
         "mean_tool_calls": 0.0,
-        "mean_checkpoint_bytes": 991251,
+        "mean_checkpoint_bytes": 991256,
         "unknown_citations": 0,
         "warnings": 0
       },
@@ -25,7 +25,7 @@
         "median_input_tokens": 6203,
         "mean_model_calls": 1.5,
         "mean_tool_calls": 0.5,
-        "mean_checkpoint_bytes": 240047,
+        "mean_checkpoint_bytes": 239961,
         "unknown_citations": 0,
         "warnings": 0
       }
@@ -41,21 +41,21 @@
         "median_input_tokens": 25369,
         "mean_model_calls": 0.5,
         "mean_tool_calls": 0.0,
-        "mean_checkpoint_bytes": 2817159,
+        "mean_checkpoint_bytes": 2817189,
         "unknown_citations": 0,
         "warnings": 0
       },
       "rmprep-v2": {
         "cases": 2,
-        "accepted": 0,
+        "accepted": 1,
         "clarified": 1,
-        "limitation": 1,
+        "limitation": 0,
         "rejected": 0,
-        "max_input_tokens": 10649,
-        "median_input_tokens": 5363,
-        "mean_model_calls": 1.5,
+        "max_input_tokens": 10142,
+        "median_input_tokens": 5109,
+        "mean_model_calls": 0.5,
         "mean_tool_calls": 0.5,
-        "mean_checkpoint_bytes": 519635,
+        "mean_checkpoint_bytes": 475163,
         "unknown_citations": 0,
         "warnings": 0
       }
@@ -71,7 +71,7 @@
         "median_input_tokens": 7869,
         "mean_model_calls": 2.33,
         "mean_tool_calls": 0.0,
-        "mean_checkpoint_bytes": 875551,
+        "mean_checkpoint_bytes": 875552,
         "unknown_citations": 0,
         "warnings": 0
       },
@@ -85,7 +85,7 @@
         "median_input_tokens": 8854,
         "mean_model_calls": 1.0,
         "mean_tool_calls": 1.0,
-        "mean_checkpoint_bytes": 247184,
+        "mean_checkpoint_bytes": 247191,
         "unknown_citations": 0,
         "warnings": 0
       }
@@ -101,7 +101,7 @@
         "median_input_tokens": 7578,
         "mean_model_calls": 1.0,
         "mean_tool_calls": 0.0,
-        "mean_checkpoint_bytes": 1079056,
+        "mean_checkpoint_bytes": 1079039,
         "unknown_citations": 0,
         "warnings": 0
       },
@@ -115,7 +115,7 @@
         "median_input_tokens": 8984,
         "mean_model_calls": 1.0,
         "mean_tool_calls": 1.0,
-        "mean_checkpoint_bytes": 251216,
+        "mean_checkpoint_bytes": 251265,
         "unknown_citations": 0,
         "warnings": 2
       }
@@ -131,7 +131,7 @@
         "median_input_tokens": 28052,
         "mean_model_calls": 1.0,
         "mean_tool_calls": 0.0,
-        "mean_checkpoint_bytes": 1704283,
+        "mean_checkpoint_bytes": 1704316,
         "unknown_citations": 0,
         "warnings": 0
       },
@@ -145,7 +145,7 @@
         "median_input_tokens": 9912,
         "mean_model_calls": 1.0,
         "mean_tool_calls": 1.0,
-        "mean_checkpoint_bytes": 456975,
+        "mean_checkpoint_bytes": 456958,
         "unknown_citations": 0,
         "warnings": 1
       }
@@ -161,7 +161,7 @@
         "median_input_tokens": 7031,
         "mean_model_calls": 1.0,
         "mean_tool_calls": 0.0,
-        "mean_checkpoint_bytes": 1053003,
+        "mean_checkpoint_bytes": 1053020,
         "unknown_citations": 0,
         "warnings": 0
       },
@@ -175,7 +175,7 @@
         "median_input_tokens": 8281,
         "mean_model_calls": 1.0,
         "mean_tool_calls": 1.0,
-        "mean_checkpoint_bytes": 241897,
+        "mean_checkpoint_bytes": 241931,
         "unknown_citations": 0,
         "warnings": 0
       }
@@ -191,7 +191,7 @@
         "median_input_tokens": 27993,
         "mean_model_calls": 1.0,
         "mean_tool_calls": 0.0,
-        "mean_checkpoint_bytes": 1079192,
+        "mean_checkpoint_bytes": 1079188,
         "unknown_citations": 0,
         "warnings": 0
       },
@@ -205,7 +205,7 @@
         "median_input_tokens": 8527,
         "mean_model_calls": 1.0,
         "mean_tool_calls": 1.0,
-        "mean_checkpoint_bytes": 251919,
+        "mean_checkpoint_bytes": 251877,
         "unknown_citations": 0,
         "warnings": 3
       }
@@ -221,7 +221,7 @@
         "median_input_tokens": 6532,
         "mean_model_calls": 1.0,
         "mean_tool_calls": 0.0,
-        "mean_checkpoint_bytes": 1073864,
+        "mean_checkpoint_bytes": 1073894,
         "unknown_citations": 0,
         "warnings": 0
       },
@@ -235,7 +235,7 @@
         "median_input_tokens": 8877,
         "mean_model_calls": 1.0,
         "mean_tool_calls": 1.0,
-        "mean_checkpoint_bytes": 254191,
+        "mean_checkpoint_bytes": 254152,
         "unknown_citations": 0,
         "warnings": 1
       }
@@ -251,7 +251,7 @@
         "median_input_tokens": 18590,
         "mean_model_calls": 2.0,
         "mean_tool_calls": 1.0,
-        "mean_checkpoint_bytes": 1223705,
+        "mean_checkpoint_bytes": 1223727,
         "unknown_citations": 0,
         "warnings": 0
       },
@@ -265,7 +265,7 @@
         "median_input_tokens": 6697,
         "mean_model_calls": 2.0,
         "mean_tool_calls": 1.0,
-        "mean_checkpoint_bytes": 271036,
+        "mean_checkpoint_bytes": 271099,
         "unknown_citations": 0,
         "warnings": 0
       }
@@ -281,21 +281,21 @@
         "median_input_tokens": 7653,
         "mean_model_calls": 1.18,
         "mean_tool_calls": 0.05,
-        "mean_checkpoint_bytes": 1180156,
+        "mean_checkpoint_bytes": 1180166,
         "unknown_citations": 0,
         "warnings": 0
       },
       "rmprep-v2": {
         "cases": 38,
-        "accepted": 35,
+        "accepted": 36,
         "clarified": 1,
-        "limitation": 2,
+        "limitation": 1,
         "rejected": 0,
-        "max_input_tokens": 10649,
+        "max_input_tokens": 10463,
         "median_input_tokens": 8747,
-        "mean_model_calls": 1.13,
+        "mean_model_calls": 1.08,
         "mean_tool_calls": 0.92,
-        "mean_checkpoint_bytes": 274623,
+        "mean_checkpoint_bytes": 272273,
         "unknown_citations": 0,
         "warnings": 7
       }
@@ -311,7 +311,7 @@
       "model_calls": 1,
       "tool_calls": 0,
       "max_input_tokens": 7037,
-      "checkpoint_bytes": 1048401,
+      "checkpoint_bytes": 1048497,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -324,7 +324,7 @@
       "model_calls": 1,
       "tool_calls": 1,
       "max_input_tokens": 8765,
-      "checkpoint_bytes": 240560,
+      "checkpoint_bytes": 240580,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -337,7 +337,7 @@
       "model_calls": 1,
       "tool_calls": 0,
       "max_input_tokens": 26534,
-      "checkpoint_bytes": 976834,
+      "checkpoint_bytes": 976809,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -350,7 +350,7 @@
       "model_calls": 1,
       "tool_calls": 1,
       "max_input_tokens": 8762,
-      "checkpoint_bytes": 244653,
+      "checkpoint_bytes": 244547,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -363,7 +363,7 @@
       "model_calls": 1,
       "tool_calls": 0,
       "max_input_tokens": 27112,
-      "checkpoint_bytes": 1002581,
+      "checkpoint_bytes": 1002485,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -376,7 +376,7 @@
       "model_calls": 1,
       "tool_calls": 1,
       "max_input_tokens": 7410,
-      "checkpoint_bytes": 249894,
+      "checkpoint_bytes": 249829,
       "cited_unknown": [],
       "warnings": 1
     },
@@ -389,7 +389,7 @@
       "model_calls": 1,
       "tool_calls": 0,
       "max_input_tokens": 6644,
-      "checkpoint_bytes": 1007851,
+      "checkpoint_bytes": 1007856,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -402,7 +402,7 @@
       "model_calls": 1,
       "tool_calls": 1,
       "max_input_tokens": 8567,
-      "checkpoint_bytes": 239706,
+      "checkpoint_bytes": 239656,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -415,7 +415,7 @@
       "model_calls": 1,
       "tool_calls": 0,
       "max_input_tokens": 31819,
-      "checkpoint_bytes": 1192690,
+      "checkpoint_bytes": 1192638,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -428,7 +428,7 @@
       "model_calls": 1,
       "tool_calls": 1,
       "max_input_tokens": 8488,
-      "checkpoint_bytes": 263382,
+      "checkpoint_bytes": 263143,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -441,7 +441,7 @@
       "model_calls": 1,
       "tool_calls": 0,
       "max_input_tokens": 32000,
-      "checkpoint_bytes": 1201760,
+      "checkpoint_bytes": 1201750,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -454,7 +454,7 @@
       "model_calls": 1,
       "tool_calls": 1,
       "max_input_tokens": 8464,
-      "checkpoint_bytes": 271141,
+      "checkpoint_bytes": 271180,
       "cited_unknown": [],
       "warnings": 2
     },
@@ -467,7 +467,7 @@
       "model_calls": 1,
       "tool_calls": 0,
       "max_input_tokens": 30402,
-      "checkpoint_bytes": 1133757,
+      "checkpoint_bytes": 1133799,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -480,7 +480,7 @@
       "model_calls": 1,
       "tool_calls": 1,
       "max_input_tokens": 8214,
-      "checkpoint_bytes": 256252,
+      "checkpoint_bytes": 256270,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -493,7 +493,7 @@
       "model_calls": 1,
       "tool_calls": 0,
       "max_input_tokens": 28874,
-      "checkpoint_bytes": 1069667,
+      "checkpoint_bytes": 1069671,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -506,7 +506,7 @@
       "model_calls": 1,
       "tool_calls": 1,
       "max_input_tokens": 8596,
-      "checkpoint_bytes": 249764,
+      "checkpoint_bytes": 249813,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -519,7 +519,7 @@
       "model_calls": 1,
       "tool_calls": 0,
       "max_input_tokens": 6126,
-      "checkpoint_bytes": 978975,
+      "checkpoint_bytes": 978951,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -532,7 +532,7 @@
       "model_calls": 1,
       "tool_calls": 1,
       "max_input_tokens": 8853,
-      "checkpoint_bytes": 247202,
+      "checkpoint_bytes": 247203,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -545,7 +545,7 @@
       "model_calls": 1,
       "tool_calls": 0,
       "max_input_tokens": 27109,
-      "checkpoint_bytes": 1004668,
+      "checkpoint_bytes": 1004786,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -558,7 +558,7 @@
       "model_calls": 1,
       "tool_calls": 1,
       "max_input_tokens": 8907,
-      "checkpoint_bytes": 252905,
+      "checkpoint_bytes": 252810,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -571,7 +571,7 @@
       "model_calls": 1,
       "tool_calls": 0,
       "max_input_tokens": 7036,
-      "checkpoint_bytes": 1050113,
+      "checkpoint_bytes": 1050190,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -584,7 +584,7 @@
       "model_calls": 1,
       "tool_calls": 1,
       "max_input_tokens": 9174,
-      "checkpoint_bytes": 243550,
+      "checkpoint_bytes": 243511,
       "cited_unknown": [],
       "warnings": 1
     },
@@ -597,7 +597,7 @@
       "model_calls": 1,
       "tool_calls": 0,
       "max_input_tokens": 6435,
-      "checkpoint_bytes": 1010146,
+      "checkpoint_bytes": 1010105,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -610,7 +610,7 @@
       "model_calls": 1,
       "tool_calls": 1,
       "max_input_tokens": 8901,
-      "checkpoint_bytes": 242257,
+      "checkpoint_bytes": 242296,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -623,7 +623,7 @@
       "model_calls": 1,
       "tool_calls": 0,
       "max_input_tokens": 6445,
-      "checkpoint_bytes": 1195304,
+      "checkpoint_bytes": 1195325,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -636,7 +636,7 @@
       "model_calls": 1,
       "tool_calls": 1,
       "max_input_tokens": 8765,
-      "checkpoint_bytes": 267222,
+      "checkpoint_bytes": 267194,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -649,7 +649,7 @@
       "model_calls": 1,
       "tool_calls": 0,
       "max_input_tokens": 6620,
-      "checkpoint_bytes": 1203983,
+      "checkpoint_bytes": 1204010,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -662,7 +662,7 @@
       "model_calls": 1,
       "tool_calls": 1,
       "max_input_tokens": 8029,
-      "checkpoint_bytes": 272010,
+      "checkpoint_bytes": 271902,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -675,7 +675,7 @@
       "model_calls": 1,
       "tool_calls": 0,
       "max_input_tokens": 7579,
-      "checkpoint_bytes": 1050709,
+      "checkpoint_bytes": 1050701,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -688,7 +688,7 @@
       "model_calls": 1,
       "tool_calls": 1,
       "max_input_tokens": 9057,
-      "checkpoint_bytes": 244713,
+      "checkpoint_bytes": 244768,
       "cited_unknown": [],
       "warnings": 1
     },
@@ -701,7 +701,7 @@
       "model_calls": 1,
       "tool_calls": 0,
       "max_input_tokens": 7412,
-      "checkpoint_bytes": 1010717,
+      "checkpoint_bytes": 1010673,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -714,7 +714,7 @@
       "model_calls": 1,
       "tool_calls": 1,
       "max_input_tokens": 8798,
-      "checkpoint_bytes": 243699,
+      "checkpoint_bytes": 243605,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -727,7 +727,7 @@
       "model_calls": 1,
       "tool_calls": 0,
       "max_input_tokens": 32000,
-      "checkpoint_bytes": 1204096,
+      "checkpoint_bytes": 1204093,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -740,7 +740,7 @@
       "model_calls": 1,
       "tool_calls": 1,
       "max_input_tokens": 8911,
-      "checkpoint_bytes": 273094,
+      "checkpoint_bytes": 273160,
       "cited_unknown": [],
       "warnings": 1
     },
@@ -753,7 +753,7 @@
       "model_calls": 1,
       "tool_calls": 0,
       "max_input_tokens": 7577,
-      "checkpoint_bytes": 1050704,
+      "checkpoint_bytes": 1050691,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -766,7 +766,7 @@
       "model_calls": 1,
       "tool_calls": 1,
       "max_input_tokens": 9187,
-      "checkpoint_bytes": 243359,
+      "checkpoint_bytes": 243527,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -779,7 +779,7 @@
       "model_calls": 1,
       "tool_calls": 0,
       "max_input_tokens": 9005,
-      "checkpoint_bytes": 1051102,
+      "checkpoint_bytes": 1051169,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -792,7 +792,7 @@
       "model_calls": 1,
       "tool_calls": 1,
       "max_input_tokens": 9032,
-      "checkpoint_bytes": 244563,
+      "checkpoint_bytes": 244348,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -805,7 +805,7 @@
       "model_calls": 3,
       "tool_calls": 0,
       "max_input_tokens": 7107,
-      "checkpoint_bytes": 790041,
+      "checkpoint_bytes": 789917,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -818,7 +818,7 @@
       "model_calls": 1,
       "tool_calls": 1,
       "max_input_tokens": 8732,
-      "checkpoint_bytes": 243247,
+      "checkpoint_bytes": 243409,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -831,7 +831,7 @@
       "model_calls": 3,
       "tool_calls": 0,
       "max_input_tokens": 7869,
-      "checkpoint_bytes": 785511,
+      "checkpoint_bytes": 785570,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -844,7 +844,7 @@
       "model_calls": 1,
       "tool_calls": 1,
       "max_input_tokens": 8854,
-      "checkpoint_bytes": 253743,
+      "checkpoint_bytes": 253818,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -857,7 +857,7 @@
       "model_calls": 1,
       "tool_calls": 0,
       "max_input_tokens": 50665,
-      "checkpoint_bytes": 2763263,
+      "checkpoint_bytes": 2763252,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -865,12 +865,12 @@
       "case_id": "QA-022",
       "family": "comparison",
       "variant": "rmprep-v2",
-      "outcome": "limitation",
-      "detail": "validation_failed",
-      "model_calls": 3,
+      "outcome": "accepted",
+      "detail": "",
+      "model_calls": 1,
       "tool_calls": 1,
-      "max_input_tokens": 10649,
-      "checkpoint_bytes": 625212,
+      "max_input_tokens": 10142,
+      "checkpoint_bytes": 536220,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -883,7 +883,7 @@
       "model_calls": 0,
       "tool_calls": 0,
       "max_input_tokens": 73,
-      "checkpoint_bytes": 2871055,
+      "checkpoint_bytes": 2871126,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -896,7 +896,7 @@
       "model_calls": 0,
       "tool_calls": 0,
       "max_input_tokens": 77,
-      "checkpoint_bytes": 414059,
+      "checkpoint_bytes": 414106,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -909,7 +909,7 @@
       "model_calls": 1,
       "tool_calls": 0,
       "max_input_tokens": 28564,
-      "checkpoint_bytes": 1737070,
+      "checkpoint_bytes": 1737103,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -922,7 +922,7 @@
       "model_calls": 1,
       "tool_calls": 1,
       "max_input_tokens": 10463,
-      "checkpoint_bytes": 457859,
+      "checkpoint_bytes": 457689,
       "cited_unknown": [],
       "warnings": 1
     },
@@ -935,7 +935,7 @@
       "model_calls": 1,
       "tool_calls": 0,
       "max_input_tokens": 27540,
-      "checkpoint_bytes": 1671496,
+      "checkpoint_bytes": 1671529,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -948,7 +948,7 @@
       "model_calls": 1,
       "tool_calls": 1,
       "max_input_tokens": 9362,
-      "checkpoint_bytes": 456092,
+      "checkpoint_bytes": 456227,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -961,7 +961,7 @@
       "model_calls": 2,
       "tool_calls": 1,
       "max_input_tokens": 7727,
-      "checkpoint_bytes": 1212398,
+      "checkpoint_bytes": 1212490,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -974,7 +974,7 @@
       "model_calls": 2,
       "tool_calls": 1,
       "max_input_tokens": 6873,
-      "checkpoint_bytes": 265974,
+      "checkpoint_bytes": 266196,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -987,7 +987,7 @@
       "model_calls": 2,
       "tool_calls": 1,
       "max_input_tokens": 29454,
-      "checkpoint_bytes": 1235012,
+      "checkpoint_bytes": 1234964,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -1000,7 +1000,7 @@
       "model_calls": 2,
       "tool_calls": 1,
       "max_input_tokens": 6521,
-      "checkpoint_bytes": 276098,
+      "checkpoint_bytes": 276003,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -1013,7 +1013,7 @@
       "model_calls": 1,
       "tool_calls": 0,
       "max_input_tokens": 7037,
-      "checkpoint_bytes": 1050351,
+      "checkpoint_bytes": 1050429,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -1026,7 +1026,7 @@
       "model_calls": 1,
       "tool_calls": 1,
       "max_input_tokens": 8332,
-      "checkpoint_bytes": 241809,
+      "checkpoint_bytes": 241918,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -1039,7 +1039,7 @@
       "model_calls": 1,
       "tool_calls": 0,
       "max_input_tokens": 6153,
-      "checkpoint_bytes": 1050052,
+      "checkpoint_bytes": 1050048,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -1052,7 +1052,7 @@
       "model_calls": 1,
       "tool_calls": 1,
       "max_input_tokens": 7282,
-      "checkpoint_bytes": 239766,
+      "checkpoint_bytes": 239807,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -1065,7 +1065,7 @@
       "model_calls": 1,
       "tool_calls": 0,
       "max_input_tokens": 6125,
-      "checkpoint_bytes": 1071501,
+      "checkpoint_bytes": 1071535,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -1078,7 +1078,7 @@
       "model_calls": 1,
       "tool_calls": 1,
       "max_input_tokens": 6998,
-      "checkpoint_bytes": 249519,
+      "checkpoint_bytes": 249539,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -1091,7 +1091,7 @@
       "model_calls": 1,
       "tool_calls": 0,
       "max_input_tokens": 28502,
-      "checkpoint_bytes": 1049709,
+      "checkpoint_bytes": 1049884,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -1104,7 +1104,7 @@
       "model_calls": 1,
       "tool_calls": 1,
       "max_input_tokens": 7034,
-      "checkpoint_bytes": 239040,
+      "checkpoint_bytes": 239138,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -1117,7 +1117,7 @@
       "model_calls": 1,
       "tool_calls": 0,
       "max_input_tokens": 10293,
-      "checkpoint_bytes": 1049891,
+      "checkpoint_bytes": 1049818,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -1130,7 +1130,7 @@
       "model_calls": 1,
       "tool_calls": 1,
       "max_input_tokens": 9304,
-      "checkpoint_bytes": 241433,
+      "checkpoint_bytes": 241479,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -1143,7 +1143,7 @@
       "model_calls": 1,
       "tool_calls": 0,
       "max_input_tokens": 6167,
-      "checkpoint_bytes": 1049610,
+      "checkpoint_bytes": 1049592,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -1156,7 +1156,7 @@
       "model_calls": 1,
       "tool_calls": 1,
       "max_input_tokens": 8281,
-      "checkpoint_bytes": 240277,
+      "checkpoint_bytes": 240206,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -1169,7 +1169,7 @@
       "model_calls": 1,
       "tool_calls": 0,
       "max_input_tokens": 7031,
-      "checkpoint_bytes": 1049911,
+      "checkpoint_bytes": 1049835,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -1182,7 +1182,7 @@
       "model_calls": 1,
       "tool_calls": 1,
       "max_input_tokens": 9107,
-      "checkpoint_bytes": 241439,
+      "checkpoint_bytes": 241435,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -1195,7 +1195,7 @@
       "model_calls": 1,
       "tool_calls": 0,
       "max_input_tokens": 4785,
-      "checkpoint_bytes": 1044577,
+      "checkpoint_bytes": 1044591,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -1208,7 +1208,7 @@
       "model_calls": 1,
       "tool_calls": 0,
       "max_input_tokens": 5151,
-      "checkpoint_bytes": 213453,
+      "checkpoint_bytes": 213461,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -1221,7 +1221,7 @@
       "model_calls": 1,
       "tool_calls": 0,
       "max_input_tokens": 7767,
-      "checkpoint_bytes": 1050599,
+      "checkpoint_bytes": 1050612,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -1234,7 +1234,7 @@
       "model_calls": 1,
       "tool_calls": 1,
       "max_input_tokens": 9254,
-      "checkpoint_bytes": 243341,
+      "checkpoint_bytes": 243226,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -1247,7 +1247,7 @@
       "model_calls": 3,
       "tool_calls": 0,
       "max_input_tokens": 5504,
-      "checkpoint_bytes": 820104,
+      "checkpoint_bytes": 820094,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -1260,7 +1260,7 @@
       "model_calls": 3,
       "tool_calls": 0,
       "max_input_tokens": 5588,
-      "checkpoint_bytes": 264625,
+      "checkpoint_bytes": 264510,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -1273,7 +1273,7 @@
       "model_calls": 1,
       "tool_calls": 0,
       "max_input_tokens": 28503,
-      "checkpoint_bytes": 1049726,
+      "checkpoint_bytes": 1049730,
       "cited_unknown": [],
       "warnings": 0
     },
@@ -1286,7 +1286,7 @@
       "model_calls": 1,
       "tool_calls": 1,
       "max_input_tokens": 6818,
-      "checkpoint_bytes": 238772,
+      "checkpoint_bytes": 238648,
       "cited_unknown": [],
       "warnings": 0
     }

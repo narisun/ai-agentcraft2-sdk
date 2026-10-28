@@ -80,6 +80,7 @@ from rmprep_v2.settings import QnaLimits
 from rmprep_v2.specialist import _accepted_update
 from rmprep_v2.state import State
 from rmprep_v2.tool_names import EVIDENCE_TOOL_NAMES
+from rmprep_v2.version_diff import version_read_ahead
 
 __all__ = ["QnAState", "build_qna_graph", "limitation_text", "recover"]
 
@@ -239,7 +240,10 @@ def build_qna_graph(
         page = await evidence.search_cards(
             scope, sources, str(current[0].content), limit=limits.prefetch_cards
         )
-        wanted = [hit.card["card_id"] for hit in page.hits]
+        # For two versions of one memo, what differs comes first: a search for the question's
+        # words cannot find the records that are new.
+        wanted = await version_read_ahead(evidence, scope, memos, MAX_IDS)
+        wanted += [hit.card["card_id"] for hit in page.hits]
         cited = {ref for memo in memos for ref in _REFERENCE.findall(memo["content"])}
         wanted += [card_id(source, ref) for source in sources for ref in sorted(cited)]
         known = {c["card_id"] for c in await evidence.get_cards(scope, sources, wanted)}

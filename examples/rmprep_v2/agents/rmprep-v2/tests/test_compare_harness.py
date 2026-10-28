@@ -130,3 +130,13 @@ def test_the_cases_the_harness_can_script_are_most_of_them() -> None:
     assert len(cases) >= 30
     with pytest.raises(StopIteration):
         case("QA-999")
+
+
+async def test_a_version_comparison_is_answered_from_the_records_that_changed(
+    tmp_path: Path,
+) -> None:
+    """QA-022 asks what is new in version 2; the answer cites records the memos never mention."""
+    results = await run_cases([case("QA-022")], tmp_path, variants=["rmprep-v2"])
+    (result,) = results
+    assert result.outcome == "accepted", result.detail
+    assert result.cited_unknown == []
