@@ -15,6 +15,11 @@ The endpoint is `http://127.0.0.1:8101/mcp`. Its `.env` sets
 `data_dir` to `../../data` and `queries_dir` to `queries`. Restart the
 service after changing CSV files: DuckDB loads them when the provider starts.
 
+## The data model
+
+`data/data_model.csv` describes every table and column, including what each table holds. It follows a
+[standard](../../docs/data-model-standard.md) that a test enforces; edit the file, then run the tests.
+
 ## Tools
 
 All tool names have the prefix `rmprep-v2-data.`.
