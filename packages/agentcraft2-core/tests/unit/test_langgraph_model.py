@@ -237,7 +237,11 @@ async def test_aliases_select_their_own_model() -> None:
 
 
 async def test_the_reply_says_how_many_attempts_the_provider_took() -> None:
-    errors = [_VendorError("429"), _VendorError("429"), "the answer"]
+    errors: list[str | AIMessage | BaseException] = [
+        _VendorError("429"),
+        _VendorError("429"),
+        "the answer",
+    ]
     fakes = Fakes(model=_ThrottlingProvider(errors))
     async with fakes.container() as services:
         with bind_request_context(CONTEXT):
