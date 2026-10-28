@@ -35,7 +35,9 @@ _INTERRUPT_EXITS = {130, 3221225786, -1073741510} if sys.platform == "win32" els
 def _start(spec: dict[str, Any]) -> subprocess.Popen[bytes]:
     log = Path(spec["log"])
     log.parent.mkdir(parents=True, exist_ok=True)
-    flags = subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0
+    flags = 0
+    if sys.platform == "win32":
+        flags = subprocess.CREATE_NEW_PROCESS_GROUP
     with log.open("ab") as output:
         return subprocess.Popen(  # noqa: S603 - the explicit command of the service
             spec["command"],
@@ -52,8 +54,11 @@ def _stop(child: subprocess.Popen[bytes], seconds: float) -> tuple[bool, int | N
     """Ask the service to stop and wait; force it after ``seconds``. Return (clean, exit code)."""
     if child.poll() is not None:
         return child.returncode in {0, *_INTERRUPT_EXITS}, child.returncode
+    stop_signal = signal.SIGINT
+    if sys.platform == "win32":
+        stop_signal = signal.CTRL_BREAK_EVENT
     try:
-        child.send_signal(signal.CTRL_BREAK_EVENT if sys.platform == "win32" else signal.SIGINT)
+        child.send_signal(stop_signal)
         code = child.wait(timeout=seconds)
     except (OSError, subprocess.TimeoutExpired):
         child.kill()

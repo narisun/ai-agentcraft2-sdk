@@ -254,6 +254,7 @@ async def test_the_governed_model_audits_the_full_input_once(
                     [static("Fixed", "Moving"), HumanMessage("q")]
                 )
     assert seen[0]["system"][1] == {"cachePoint": {"type": "default", "ttl": "1h"}}
+    assert reply.usage_metadata is not None
     assert reply.usage_metadata["input_tokens"] == 1050
     (record,) = fakes.audit.records
     assert (record.attributes["input_tokens"], record.attributes["output_tokens"]) == (1050, 20)
