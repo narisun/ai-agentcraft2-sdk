@@ -1,7 +1,9 @@
-"""The ``data`` commands: draft a data model from CSV files, compare it, check it."""
+"""The ``data`` commands: draft a data model from CSV files, compare it, check it, validate."""
 
 from __future__ import annotations
 
+import csv
+from collections import Counter
 from pathlib import Path
 
 import click
@@ -14,6 +16,7 @@ from agentcraft2_cli.data_model import (
 )
 from agentcraft2_cli.data_model_diff import compare_model
 from agentcraft2_cli.data_model_draft import draft_model, write_model
+from agentcraft2_cli.data_model_validate import Finding, validate_data
 from agentcraft2_cli.errors import CliError
 
 __all__ = ["data"]
@@ -179,3 +182,151 @@ def diff(data_dir: Path, model_file: Path | None) -> None:
         return
     click.echo(f"{len(differences)} {noun}, {len(notes)} {note_noun}.")
     raise click.exceptions.Exit(1)
+
+
+def _write_report(findings: list[Finding], path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle, lineterminator="\r\n")
+        writer.writerow(["level", "rule", "file", "row", "line", "column", "value", "message"])
+        for f in findings:
+            writer.writerow(
+                [
+                    f.level,
+                    f.rule,
+                    f.file,
+                    "" if f.row is None else f.row,
+                    "" if f.line is None else f.line,
+                    f.column or "",
+                    f.value or "",
+                    f.message,
+                ]
+            )
+
+
+def _print_findings(findings: list[Finding], limit: int) -> None:
+    """Print findings by file; show ``limit`` of each rule in each column, and count the rest."""
+    for file in dict.fromkeys(f.file for f in findings):
+        click.echo(file)
+        shown: Counter[tuple[str, str, str]] = Counter()
+        skipped: Counter[tuple[str, str, str]] = Counter()
+        for f in (f for f in findings if f.file == file):
+            group = (f.level, f.rule, f.column or "")
+            if shown[group] >= limit:
+                skipped[group] += 1
+                continue
+            shown[group] += 1
+            place = ", ".join(
+                part
+                for part in (
+                    f"row {f.row} (line {f.line})" if f.row is not None else "",
+                    f"column {f.column}" if f.column else "",
+                )
+                if part
+            )
+            click.echo(f"  {f.level:<7} {f.rule:<12} {place + ': ' if place else ''}{f.message}")
+        for (level, rule, column), count in skipped.items():
+            where = f" in column {column}" if column else ""
+            click.echo(f"  ... and {count} more {level} {rule} findings{where}")
+
+
+@model.command()
+@click.argument("data_dir", type=_FOLDER)
+@_MODEL
+@click.option(
+    "--table",
+    "tables",
+    multiple=True,
+    help="Validate only this table. Repeat it for more than one.",
+)
+@click.option(
+    "--limit",
+    type=click.IntRange(min=1),
+    default=5,
+    show_default=True,
+    help="How many findings of one rule in one column to print. The rest are counted.",
+)
+@click.option(
+    "--report",
+    "report",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=None,
+    help="Write every finding, with its file, row, line and column, to this CSV file.",
+)
+@click.option(
+    "--hide-values",
+    is_flag=True,
+    help="Leave the offending values out of the output and the report.",
+)
+def validate(
+    data_dir: Path,
+    model_file: Path | None,
+    tables: tuple[str, ...],
+    limit: int,
+    report: Path | None,
+    hide_values: bool,
+) -> None:
+    """Check every value in the CSV files in DATA_DIR against the data_model.csv.
+
+    Each file is loaded with DuckDB, which is what the services read the files with. A dry
+    run loads it as a service does and compares what DuckDB made of it with the model; the
+    checks then read every value as written and test it against its column's type.
+
+    \b
+    Each problem is reported with its file, row, line and column:
+      type        a value that is not what the type says: a date that is not YYYY-MM-DD, a
+                  number with a thousands separator or a currency symbol, a yes/no that is not
+      empty       an empty value in a column the model says is never empty
+      duplicate   a repeat of a primary key or of a unique column
+      orphan      a foreign key value that matches nothing in the table it points at
+      structure   a row with more or fewer fields than the header, or a file DuckDB cannot read
+      whitespace  spaces at the start or end of a value (a warning)
+      mixed       several spellings for yes and no, or timestamps with and without a time zone
+      runtime_type DuckDB would load the column as a different type from the model's (a warning)
+
+    A row is numbered from 1 after the header and also shows its line in the file. An error
+    makes the exit code 1; warnings do not. Values are printed, up to 40 characters, unless
+    --hide-values is given.
+
+    \b
+    Examples:
+      ac2 data model validate data
+      ac2 data model validate data --table claims --report problems.csv
+      ac2 data model validate data --hide-values
+    """
+    rows = _read(_model_path(data_dir, model_file))
+    try:
+        findings = validate_data(
+            rows, data_dir, tables=list(tables) or None, show_values=not hide_values
+        )
+    except ModuleNotFoundError as error:
+        if error.name != "duckdb":
+            raise
+        raise CliError(
+            "validating needs DuckDB",
+            fix='install it with: pip install "agentcraft2-core[duckdb]"',
+        ) from error
+    if report is not None:
+        _write_report(findings, report)
+    _print_findings(findings, limit)
+    errors = sum(1 for f in findings if f.level == "error")
+    warnings = sum(1 for f in findings if f.level == "warning")
+    files = len({f.file for f in findings})
+    if (
+        any(
+            count > limit
+            for count in Counter((f.file, f.level, f.rule, f.column) for f in findings).values()
+        )
+        and report is None
+    ):
+        click.echo("Use --report FILE to write every finding to a file.")
+    if not findings:
+        click.echo("The values follow the model: no problems found.")
+        return
+    noun = "error" if errors == 1 else "errors"
+    click.echo(
+        f"{errors} {noun}, {warnings} {'warning' if warnings == 1 else 'warnings'} "
+        f"in {files} {'file' if files == 1 else 'files'}."
+    )
+    if errors:
+        raise click.exceptions.Exit(1)
