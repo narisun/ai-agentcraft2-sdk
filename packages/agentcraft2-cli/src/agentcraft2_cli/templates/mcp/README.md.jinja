@@ -39,6 +39,15 @@ Review the selected columns and parameters, and keep the tools your application
 needs.
 
 {% endif %}
+{% if plan.origin == "model" %}
+Each tool uses a named query in `queries/` over the CSV files in `data/`. The queries
+were written by hand and the tools made from them with the data model, `data/data_model.csv`:
+a tool's description is its query's description and says what one row is, and each argument
+is described by the column it is compared with. To add or change a query, change its file and run
+the same `new mcp {{ name }} --from-model ... --queries ...` command again with `--force`: it
+rewrites `server.py`, the tests and this README, so keep changes of your own elsewhere.
+
+{% endif %}
 {% if plan.origin == "redshift" %}
 Each tool uses a named query in `queries/`, generated from the Redshift
 catalogue. Review the selected columns and parameters, and keep the tools your

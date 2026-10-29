@@ -20,6 +20,8 @@ from pathlib import Path
 import pytest
 
 from agentcraft2_cli.__main__ import main
+from agentcraft2_cli.data_model import COLUMNS
+from agentcraft2_cli.data_model_draft import write_model
 from agentcraft2_cli.read_redshift import CatalogTableLike, RedshiftRequest
 from agentcraft2_cli.shared import read_servers
 from agentcraft2_cli.toolbox import Toolbox
@@ -58,6 +60,77 @@ EXPORTS = {
 
 
 RATES = Path(__file__).resolve().parents[1] / "unit" / "data" / "rates.yaml"
+
+# The developer's own data with a data model, and a folder of query files: a server made from them.
+POLICIES_CSV = (
+    "policy_id,holder,kind,premium,starts\n"
+    "P-1,Ana Abel,home,120.50,2026-01-01\n"
+    "P-2,Bo Brook,car,80.00,2026-02-01\n"
+)
+PAYOUTS_CSV = (
+    "payout_id,policy_id,status,amount\n1,P-1,paid,50.00\n2,P-1,open,70.25\n3,P-2,paid,15.00\n"
+)
+PAYOUT_QUERY = """\
+-- description: Payouts of one policy, newest first.
+-- param policy_id: string
+-- max_rows: 25
+-- classification: confidential
+SELECT payout_id, policy_id, status, amount
+FROM payouts
+WHERE policy_id = :policy_id
+ORDER BY payout_id DESC
+"""
+KIND_QUERY = """-- description: Policies of one kind, with the holder and the yearly premium.
+-- param kind: string
+-- max_rows: 50
+-- classification: confidential
+SELECT policy_id, holder, kind, premium
+FROM policies
+WHERE kind = :kind
+ORDER BY policy_id
+"""
+
+
+def model_row(table: str, description: str, column: str, **changes: str) -> dict[str, str]:
+    row = dict.fromkeys(COLUMNS, "")
+    row.update(
+        domain="claims",
+        table=table,
+        table_description=description,
+        column=column,
+        datatype="string",
+        nullable="Y",
+        description=f"The {column} of a row, as the insurer records it.",
+    )
+    return {**row, **changes}
+
+
+def write_claims_data(data: Path, queries: Path) -> None:
+    """Two tables, their data model, and two query files."""
+    data.mkdir()
+    queries.mkdir()
+    (data / "policies.csv").write_text(POLICIES_CSV, encoding="utf-8")
+    (data / "payouts.csv").write_text(PAYOUTS_CSV, encoding="utf-8")
+    policies = "Insurance policies sold to customers, one row for each policy."
+    payouts = "Payouts made against a policy, one row for each payout."
+    write_model(
+        [
+            model_row("policies", policies, "policy_id", pk="Y", nullable="N"),
+            model_row("policies", policies, "holder"),
+            model_row("policies", policies, "kind"),
+            model_row("policies", policies, "premium", datatype="decimal"),
+            model_row("policies", policies, "starts", datatype="date"),
+            model_row("payouts", payouts, "payout_id", datatype="integer", pk="Y", nullable="N"),
+            model_row(
+                "payouts", payouts, "policy_id", fk="claims.policies.policy_id", nullable="N"
+            ),
+            model_row("payouts", payouts, "status"),
+            model_row("payouts", payouts, "amount", datatype="decimal"),
+        ],
+        data / "data_model.csv",
+    )
+    (queries / "payouts_of_policy.sql").write_text(PAYOUT_QUERY, encoding="utf-8")
+    (queries / "policies_of_kind.sql").write_text(KIND_QUERY, encoding="utf-8")
 
 
 @dataclass(frozen=True)
@@ -104,14 +177,26 @@ def workspace(tmp_path_factory: pytest.TempPathFactory) -> Path:
     exports.mkdir()
     for name, text in EXPORTS.items():
         (exports / name).write_text(text, encoding="utf-8")
-    for command in (
+    claims_data, claims_queries = parent / "claims-data", parent / "claims-queries"
+    write_claims_data(claims_data, claims_queries)
+    for step in (
         ("new", "mcp", "orders-mcp", "--from-csv", str(exports)),
         ("link", "hello-agent", "orders"),
+        # Made from a data model and a folder of query files, with argument descriptions.
+        (
+            "new",
+            "mcp",
+            "cover-mcp",
+            "--from-model",
+            str(claims_data),
+            "--queries",
+            str(claims_queries),
+        ),
         # A fourth, over a REST API that is described by an OpenAPI document.
         ("new", "mcp", "rates-mcp", "--from-openapi", str(RATES)),
         ("link", "hello-agent", "rates"),
     ):
-        assert main([*command, "--workspace", str(root)]) == 0, command
+        assert main([*step, "--workspace", str(root)]) == 0, step
     # A fifth, over Redshift tables. The catalogue is the one thing that is not real here.
     sales = ["new", "mcp", "sales-mcp", "--from-redshift", "sales", "--database", "dev"]
     with_catalogue = Toolbox(fetch_catalog=catalogue)
@@ -140,17 +225,24 @@ def run_in(workspace: Path, *command: str) -> subprocess.CompletedProcess[str]:
 
 def test_every_tool_of_every_server_was_pinned_from_the_running_code(workspace: Path) -> None:
     servers = read_servers(workspace)
-    assert [server.id for server in servers] == ["claims", "hello", "orders", "rates", "sales"]
-    assert [tool.name for tool in servers[4].tools] == [
+    expected = ["claims", "cover", "hello", "orders", "rates", "sales"]
+    assert [server.id for server in servers] == expected
+    by_id = {server.id: server for server in servers}
+    assert [tool.name for tool in by_id["sales"].tools] == [
         "sales.invoices_by_invoice_id",
         "sales.rates_daily_all",
     ]
-    assert [tool.name for tool in servers[3].tools] == [
+    assert [tool.name for tool in by_id["rates"].tools] == [
         "rates.list_currencies",
         "rates.currencies_by_currency_code",
         "rates.traders_of_desk",
     ]
-    assert sorted(tool.name for tool in servers[2].tools) == sorted(
+    # One tool for each query file, whatever order the files are read in.
+    assert sorted(tool.name for tool in by_id["cover"].tools) == [
+        "cover.payouts_of_policy",
+        "cover.policies_of_kind",
+    ]
+    assert sorted(tool.name for tool in by_id["orders"].tools) == sorted(
         [
             "orders.orders_2026_by_order_id",
             "orders.orders_2026_by_customer_id",
@@ -163,8 +255,8 @@ def test_every_tool_of_every_server_was_pinned_from_the_running_code(workspace: 
     for server in servers:
         assert all(tool.schema_sha256 for tool in server.tools), server.id
     # The same arguments give the same pin, whatever the server is called.
-    assert [t.schema_sha256 for t in servers[0].tools] == [
-        t.schema_sha256 for t in servers[1].tools
+    assert [t.schema_sha256 for t in by_id["claims"].tools] == [
+        t.schema_sha256 for t in by_id["hello"].tools
     ]
 
 
@@ -222,7 +314,7 @@ def test_the_generated_policy_samples_are_decided_as_expected(
     assert agentcraft2(workspace, "policy", "test") == 0
     out = capsys.readouterr().out
     # 5 servers x 4, 2 agents x 3, 5 links x 1.
-    assert "31 samples" in out, out[-500:]
+    assert "35 samples" in out, out[-500:]
     assert "unexpected" not in out
 
 
@@ -255,4 +347,4 @@ def test_the_rules_and_opa_agree_on_every_generated_sample(
     assert agentcraft2(workspace, "policy", "test", "--opa") == 0
     out = capsys.readouterr().out
     assert "\nopa\n" in out
-    assert "31 samples came out as expected. The rules engine and OPA agree" in out
+    assert "35 samples came out as expected. The rules engine and OPA agree" in out

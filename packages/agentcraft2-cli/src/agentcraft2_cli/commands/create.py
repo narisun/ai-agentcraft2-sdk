@@ -233,6 +233,28 @@ def new_agent(
     help="Propose the tools from the CSV files in this folder, and copy the files in.",
 )
 @click.option(
+    "--from-model",
+    "model_folder",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default=None,
+    help="Make the tools from the query files given with --queries, using the data_model.csv "
+    "in this folder, and copy the files in.",
+)
+@click.option(
+    "--queries",
+    "queries",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default=None,
+    help="With --from-model: the folder of query files. Each file is one tool.",
+)
+@click.option(
+    "--mask",
+    "mask",
+    multiple=True,
+    help="With --from-model: mask this column for analysts, besides those whose names look "
+    "personal. May be repeated.",
+)
+@click.option(
     "--from-openapi",
     "openapi",
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
@@ -282,6 +304,12 @@ def new_mcp(
     With --from-csv its tools are proposed from your own files: a lookup by
     the column that identifies a row, and a filter for each column that sorts
     rows into a few groups.
+
+    With --from-model there is one tool for each query file in the folder given with
+    --queries, over the CSV files and the data_model.csv of the folder given. A tool's
+    description is its query's, and says what one row is; each argument is described by
+    the column it is compared with. A query that uses what the model does not describe
+    is refused.
 
     With --from-openapi there is one tool for each GET operation that answers
     with JSON records. The API is not called; the tests answer for it.

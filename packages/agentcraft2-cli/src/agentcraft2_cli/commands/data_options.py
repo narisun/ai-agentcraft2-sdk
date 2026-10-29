@@ -9,13 +9,14 @@ from typing import Any
 import click
 
 from agentcraft2_cli.read_redshift import RedshiftRequest
-from agentcraft2_cli.readers import Proposal, from_csv, from_openapi, from_redshift
+from agentcraft2_cli.readers import Proposal, from_csv, from_model, from_openapi, from_redshift
 from agentcraft2_cli.toolbox import Toolbox
 
 __all__ = ["print_proposal", "proposal_for", "redshift_options"]
 
 _READERS = {
     "csv_folder": "--from-csv",
+    "model_folder": "--from-model",
     "openapi": "--from-openapi",
     "redshift_schema": "--from-redshift",
 }
@@ -29,6 +30,7 @@ _REDSHIFT_ONLY = (
     "aws_profile",
     "aws_region",
 )
+_MODEL_ONLY = ("queries", "mask")
 _OPTION_NAMES = {"tables": "--table", "only": "--query"}
 
 
@@ -64,6 +66,8 @@ def proposal_for(tools: Toolbox, default_source: str, given: Mapping[str, Any]) 
     stray = [key for key in _REDSHIFT_ONLY if given[key]] if reader != "redshift_schema" else []
     if given["base_url"] and reader != "openapi":
         stray.append("base_url")
+    if reader != "model_folder":
+        stray += [key for key in _MODEL_ONLY if given[key]]
     if reader is None:
         stray += [key for key in ("source", "only") if given[key]]
     if stray:
@@ -74,6 +78,18 @@ def proposal_for(tools: Toolbox, default_source: str, given: Mapping[str, Any]) 
     if reader == "csv_folder":
         return asyncio.run(
             from_csv(given["csv_folder"], source=source, per_table=per_table, only=only)
+        )
+    if reader == "model_folder":
+        if not given["queries"]:
+            raise click.UsageError("--from-model needs --queries, the folder of query files")
+        return asyncio.run(
+            from_model(
+                given["model_folder"],
+                given["queries"],
+                source=source,
+                only=only,
+                mask=tuple(given["mask"]),
+            )
         )
     if reader == "openapi":
         return asyncio.run(
@@ -106,7 +122,7 @@ def print_proposal(server_id: str, proposal: Proposal) -> None:
     click.echo("Proposed tools:")
     for query in proposal.plan.queries:
         masked = f"   masks {', '.join(query.masked)} for analysts" if query.masked else ""
-        click.echo(f"  {server_id}.{query.name}({query.signature}){masked}")
+        click.echo(f"  {server_id}.{query.name}({query.plain_signature}){masked}")
         click.echo(f"      {query.description}")
     for note in proposal.notes:
         click.echo(f"note: {note}", err=True)

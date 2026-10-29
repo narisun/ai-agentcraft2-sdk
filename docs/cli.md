@@ -25,7 +25,7 @@ ac2 errors                              # list what failed, with the stack trace
 | --- | --- |
 | `ac2 init NAME` | Create a workspace: places for agents and MCP servers, the shared registries and policy rules, and the checks CI runs. |
 | `ac2 new agent NAME` | Add an agent: a LangGraph graph, a tool, an HTTP entry point and its tests. `--model fake`, `anthropic` or `bedrock`; `--mcp SERVER` to let it call a server. |
-| `ac2 new mcp NAME` | Add an MCP server over sample data, or over your own CSV files (`--from-csv`), an OpenAPI document (`--from-openapi`) or a Redshift schema (`--from-redshift`). |
+| `ac2 new mcp NAME` | Add an MCP server over sample data, or over your own CSV files (`--from-csv`), a data model with your own query files (`--from-model DIR --queries DIR`), an OpenAPI document (`--from-openapi`) or a Redshift schema (`--from-redshift`). |
 | `ac2 link AGENT SERVER` | Let an agent call the tools of a server: registry entry, policy rules and a test. |
 | `ac2 install` | Install this workspace's agents and MCP servers and the development tools with the Python you run this with. It never installs the SDK, which has its own installer; it stops with the fix if the SDK is missing. |
 | `ac2 doctor [SERVICE]` | Verify the configuration: settings, adapters, registries, rules, pins. Exit code 1 if a check fails, with the fix. Also `ac2 config check`. |

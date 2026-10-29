@@ -14,10 +14,27 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path, PurePosixPath
 from typing import Protocol
 
-from agentcraft2_cli.dataplan import API_RESPONSES_FILE, DataPlan, PlannedQuery
+from agentcraft2_cli.dataplan import (
+    API_RESPONSES_FILE,
+    MAX_QUERY_NAME,
+    DataPlan,
+    PlannedParameter,
+    PlannedQuery,
+)
 from agentcraft2_cli.errors import CliError
-from agentcraft2_cli.proposals import propose_queries
+from agentcraft2_cli.proposals import is_sensitive, propose_queries
 from agentcraft2_cli.read_csv import read_csv_folder, stage_csv_files
+from agentcraft2_cli.read_model import (
+    MIN_DESCRIPTION,
+    Model,
+    Use,
+    analyse,
+    example_value,
+    has_classification,
+    load_model,
+    model_type,
+    stand_in,
+)
 from agentcraft2_cli.read_openapi import read_openapi
 from agentcraft2_cli.read_redshift import (
     CatalogTableLike,
@@ -32,7 +49,13 @@ from agentcraft2_core.adapters import (
     RestOptions,
     SystemClock,
 )
-from agentcraft2_core.contracts import AgentCraft2Error, DataSource, SupportsAsyncClose
+from agentcraft2_core.adapters.sql import QueryCatalog
+from agentcraft2_core.contracts import (
+    AgentCraft2Error,
+    DataSource,
+    QueryParameter,
+    SupportsAsyncClose,
+)
 from agentcraft2_core.kit import checked_base_url
 from agentcraft2_core.testing import rest_stub_transport
 
@@ -42,6 +65,7 @@ __all__ = [
     "check_queries",
     "csv_source",
     "from_csv",
+    "from_model",
     "from_openapi",
     "from_redshift",
     "selected",
@@ -192,6 +216,178 @@ async def from_csv(
         description=f"Read-only tools over the {source.replace('_', ' ')} data.",
         notes=(*found.notes, *dropped),
         data_files={f"{name}.csv": path for name, path in found.files.items()},
+    )
+
+
+def _with_notes(problem: AgentCraft2Error) -> str:
+    """A library error as one line, with the notes that name the file it is about."""
+    notes = "; ".join(getattr(problem, "__notes__", ()))
+    return f"{problem.summary} [{notes}]" if notes else problem.summary
+
+
+def _sentence(text: str) -> str:
+    text = text.strip()
+    return text if text.endswith((".", "!", "?")) else f"{text}."
+
+
+def _plan_query(
+    name: str, text: str, catalog: QueryCatalog, model: Model, notes: list[str]
+) -> PlannedQuery:
+    """One query file, as a tool: its description and arguments, taken from the model as well."""
+    wanted = catalog.describe()[name]
+    if len(name) > MAX_QUERY_NAME:
+        raise CliError(
+            f"the query file {name}.sql has a name that is too long for a tool",
+            expected=f"at most {MAX_QUERY_NAME} characters",
+            fix="rename the file; its name is the tool's name",
+        )
+    if len(wanted.description.strip()) < MIN_DESCRIPTION:
+        raise CliError(
+            f"query {name} ({name}.sql) has a description that says too little",
+            expected=f"at least {MIN_DESCRIPTION} characters: a model reads it to choose the tool",
+            actual=repr(wanted.description),
+            fix="say what the query returns, in its '-- description:' line",
+        )
+    use = analyse(catalog.get(name).expression, model)
+    _refuse_what_the_model_lacks(name, use)
+    parameters = tuple(_planned_parameter(name, p, use, model, notes) for p in wanted.parameters)
+    description = _sentence(wanted.description)
+    if len(use.tables) == 1 and model.tables[use.tables[0]].primary_key:
+        key = ", ".join(model.tables[use.tables[0]].primary_key)
+        description += f" One row per {key}."
+    if has_classification(text):
+        classification = wanted.classification.name.lower()
+    else:
+        classification = "confidential"
+        notes.append(
+            f"{name} has no classification, so it is confidential; "
+            f"add '-- classification: ...' to {name}.sql to choose"
+        )
+    return PlannedQuery(
+        name=name,
+        description=description,
+        parameters=parameters,
+        columns=(),
+        masked=(),
+        classification=classification,
+        max_rows=wanted.max_rows,
+        definition=text,
+    )
+
+
+def _refuse_what_the_model_lacks(name: str, use: Use) -> None:
+    fix = (
+        "describe it in data_model.csv (ac2 data model draft shows how), "
+        "or take it out of the query"
+    )
+    if use.unknown_tables:
+        raise CliError(
+            f"{name}.sql reads the table {', '.join(use.unknown_tables)}, "
+            "which the data model does not describe",
+            fix=fix,
+        )
+    if use.unknown_columns:
+        many = len(use.unknown_columns) > 1
+        raise CliError(
+            f"{name}.sql uses the column{'s' if many else ''} {', '.join(use.unknown_columns)}, "
+            f"which the data model does not describe",
+            fix=fix,
+        )
+
+
+def _planned_parameter(
+    query: str, declared: QueryParameter, use: Use, model: Model, notes: list[str]
+) -> PlannedParameter:
+    name, kind = declared.name, declared.type
+    found = use.arguments.get(name)
+    if found is None:
+        return PlannedParameter(name, kind.value, stand_in(kind))
+    table, column = found
+    row = model.column(table, column)
+    assert row is not None  # noqa: S101 - analyse only returns columns the model has
+    if model_type(row["datatype"]) is not kind:
+        notes.append(
+            f"{query}: argument {name} is declared {kind.value}, but {table}.{column} is "
+            f"{row['datatype']} in the data model"
+        )
+    return PlannedParameter(
+        name, kind.value, example_value(model, table, column, kind), row["description"].strip()
+    )
+
+
+async def from_model(
+    data_dir: Path,
+    queries_dir: Path,
+    *,
+    source: str,
+    only: Sequence[str] = (),
+    mask: Sequence[str] = (),
+) -> Proposal:
+    """Make tools from a folder of query files and the data model that describes the data.
+
+    Each ``.sql`` file in ``queries_dir`` becomes a tool. The data model gives a tool's
+    description what one row is, and each argument the description of the column it is compared
+    with. Every query is run once over the files, so what is proposed works.
+
+    Args:
+        data_dir: The folder of CSV files and their ``data_model.csv``.
+        queries_dir: The folder of query files.
+        source: The name of the data source.
+        only: Keep only these queries.
+        mask: Columns to mask for analysts besides those whose names look personal.
+
+    Raises:
+        CliError: If the model or a query is not as it must be, with what to do about it. A
+            query that does not run is an error, not left out: someone wrote it.
+    """
+    model = load_model(data_dir)
+    if not queries_dir.is_dir():
+        raise CliError(
+            f"{queries_dir} is not a folder",
+            expected="a folder of .sql files, one named query each",
+            fix="give the path of the folder that holds the query files",
+        )
+    if not any(queries_dir.glob("*.sql")):
+        raise CliError(
+            f"there are no query files in {queries_dir}",
+            expected="one .sql file for each tool, with a header of '-- description:' lines",
+            fix="write the queries, or leave out --from-model to have some proposed",
+        )
+    try:
+        catalog = QueryCatalog.load(queries_dir)
+    except AgentCraft2Error as problem:
+        raise CliError(_with_notes(problem)) from problem
+    notes: list[str] = []
+    planned = [
+        _plan_query(
+            name, (queries_dir / f"{name}.sql").read_text(encoding="utf-8"), catalog, model, notes
+        )
+        for name in sorted(catalog.describe())
+    ]
+    chosen = selected(planned, only)
+    queries, dropped = await check_queries(csv_source(data_dir, source), ".sql", chosen)
+    if dropped:
+        raise CliError("these queries did not run over the files: " + "; ".join(dropped))
+    unknown = [column for column in mask if not any(column in q.columns for q in queries)]
+    if unknown:
+        raise CliError(
+            f"no query returns a column called {', '.join(unknown)}",
+            fix="name a column that a query returns; ac2 new mcp --from-model --propose lists them",
+        )
+    queries = [
+        replace(q, masked=tuple(c for c in q.columns if is_sensitive(c) or c in mask))
+        for q in queries
+    ]
+    count = len(model.tables)
+    return Proposal(
+        plan=DataPlan(origin="model", source=source, kind="duckdb_csv", queries=tuple(queries)),
+        summary=(
+            f"Read {count} table{'s' if count != 1 else ''} from {model.path} and "
+            f"{len(queries)} quer{'ies' if len(queries) != 1 else 'y'} from {queries_dir}"
+        ),
+        description=f"Read-only tools over the {source.replace('_', ' ')} data.",
+        notes=tuple(notes),
+        data_files={path.name: path for path in sorted(data_dir.glob("*.csv"))},
     )
 
 

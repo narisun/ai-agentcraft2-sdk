@@ -41,7 +41,7 @@ MAX_DESCRIPTION = 84
 API_RESPONSES_FILE = PurePosixPath("tests/api_responses.json")
 """In a server over a REST API: what the API answers in the server's tests."""
 
-ORIGINS = (SAMPLE, "csv", "openapi", "redshift")
+ORIGINS = (SAMPLE, "csv", "openapi", "redshift", "model")
 """Where a plan can come from: the built-in sample, or one of the readers."""
 
 Example = str | int | float | bool
@@ -66,11 +66,14 @@ class PlannedParameter:
         name: The parameter's name, which is also the tool argument's name.
         type: The declared type, a value of ``ParameterType``.
         example: A value the generated tests call the tool with.
+        description: What the argument is, when a reader knows: it is declared on the tool's
+            input schema, where a model reads it. Left empty, the argument is declared plainly.
     """
 
     name: str
     type: str
     example: Example
+    description: str = ""
 
     def __post_init__(self) -> None:
         ParameterType(self.type)  # raises ValueError for a type that does not exist
@@ -79,6 +82,14 @@ class PlannedParameter:
     def annotation(self) -> str:
         """The Python type the tool declares for this argument."""
         return _ANNOTATIONS[ParameterType(self.type)]
+
+
+def _declared(parameter: PlannedParameter) -> str:
+    """One argument of a tool function, with its description when it has one."""
+    if not parameter.description:
+        return f"{parameter.name}: {parameter.annotation}"
+    text = json.dumps(parameter.description, ensure_ascii=False)
+    return f"{parameter.name}: Annotated[{parameter.annotation}, Field(description={text})]"
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,8 +123,22 @@ class PlannedQuery:
 
     @property
     def signature(self) -> str:
-        """The tool function's parameter list."""
+        """The tool function's parameter list.
+
+        An argument with a description is declared ``Annotated[str, Field(description=...)]``,
+        which is how the tool's input schema comes to describe it.
+        """
+        return ", ".join(_declared(p) for p in self.parameters)
+
+    @property
+    def plain_signature(self) -> str:
+        """The parameter list without descriptions, for showing a person."""
         return ", ".join(f"{p.name}: {p.annotation}" for p in self.parameters)
+
+    @property
+    def has_described_arguments(self) -> bool:
+        """Whether the signature needs ``Annotated`` and ``Field``."""
+        return any(p.description for p in self.parameters)
 
     @property
     def arguments(self) -> str:
@@ -173,6 +198,11 @@ class DataPlan:
         return self.origin == SAMPLE
 
     @property
+    def has_described_arguments(self) -> bool:
+        """Whether a generated server needs ``Annotated`` and ``Field`` for its tools."""
+        return any(query.has_described_arguments for query in self.queries)
+
+    @property
     def deployed_setting(self) -> str:
         """The deployed data source as the value of the data sources setting, or nothing."""
         return json.dumps({self.source: dict(self.deployed)}) if self.deployed else ""
@@ -204,7 +234,9 @@ class DataPlan:
         for query in self.queries:
             parameters = ", ".join(
                 f"{{ name = {toml_text(p.name)}, type = {toml_text(p.type)}, "
-                f"example = {json.dumps(p.example, ensure_ascii=False)} }}"
+                f"example = {json.dumps(p.example, ensure_ascii=False)}"
+                + (f", description = {toml_text(p.description)}" if p.description else "")
+                + " }"
                 for p in query.parameters
             )
             lines += [
@@ -245,6 +277,7 @@ class DataPlan:
                             name=string_of(p, "name"),
                             type=string_of(p, "type"),
                             example=p["example"],
+                            description=str(p.get("description", "")),
                         )
                         for p in query["parameters"]
                     ),
