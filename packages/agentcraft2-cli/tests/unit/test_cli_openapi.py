@@ -565,7 +565,8 @@ def test_the_two_data_options_do_not_mix(
     capsys.readouterr()
     arguments = ("--from-openapi", RATES, "--from-csv", tmp_path, "--workspace", workspace)
     assert run("new", "mcp", "x-mcp", *arguments) == 2
-    assert "give only one of --from-csv, --from-openapi, --from-redshift" in capsys.readouterr().err
+    error = capsys.readouterr().err
+    assert "give only one of --from-csv, --from-model, --from-openapi, --from-redshift" in error
     assert run("new", "mcp", "x-mcp", "--base-url", "https://x.test", "--workspace", workspace) == 2
     assert "which was not given: --base-url" in capsys.readouterr().err
     assert (

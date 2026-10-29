@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import {% if plan.has_described_arguments %}Annotated, {% endif %}Any
 
 from agentcraft2_core import ServiceContainer
 from mcp.server.mcpserver import MCPServer
 {% if sample %}
 from mcp.server.mcpserver.exceptions import ToolError
+{% endif %}
+{% if plan.has_described_arguments %}
+from pydantic import Field
 {% endif %}
 
 __all__ = ["APPLICATION", "DATA_SOURCE", "SERVER_ID", "build_server"]

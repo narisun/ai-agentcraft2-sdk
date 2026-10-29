@@ -57,6 +57,7 @@ On macOS/Linux, use a bash or zsh terminal. Write `LIBRARY="$PWD"` and
 | `agentcraft2 install [--no-dev] [--verbose]` | Installs this workspace's agents and MCP servers, their dependencies and the development tools using the current Python's pip. It never installs the SDK, which has its own installer; it stops with the fix if the SDK is missing |
 | `agentcraft2 new mcp NAME` | Adds an MCP server: one plain tool, one governed query over a sample CSV file, tests |
 | `agentcraft2 new mcp NAME --from-csv DIR` | Adds an MCP server over your own CSV files, with tools proposed from what is in them |
+| `agentcraft2 new mcp NAME --from-model DIR --queries DIR` | Adds an MCP server over your own CSV files and their `data_model.csv`, with one tool for each query file you wrote, described from the model |
 | `agentcraft2 new mcp NAME --from-openapi FILE` | Adds an MCP server over a REST API, with one tool for each GET operation that answers with records |
 | `agentcraft2 new mcp NAME --from-redshift SCHEMA` | Adds an MCP server over Redshift tables. Reads the catalogue only; runs locally on stand-in data |
 | `agentcraft2 new agent NAME [--mcp SERVER]` | Adds a LangGraph agent with one tool, a command line, an HTTP entry point, tests |
@@ -129,13 +130,15 @@ policy samples and tests. `--propose` shows the proposals and writes nothing.
 | Option | Reads | Proposes | Locally the server runs on |
 | --- | --- | --- | --- |
 | `--from-csv DIR` | Every `.csv` file: columns, types, how many values repeat | Per table: a lookup by the column that identifies a row, and a filter per column that sorts rows into a few groups | Your files, copied into `data/` |
+| `--from-model DIR --queries DIR` | The `.csv` files and `data_model.csv` of the first folder, and the `.sql` files of the second | Nothing: one tool for each query file you wrote. A tool is described by its query's description and what one row is; each argument by the column it is compared with. A query that uses a table or column the model does not describe is refused | Your files and the model, copied into `data/` |
 | `--from-openapi FILE` | An OpenAPI 3 document, JSON or YAML. The API is not called | One query per GET operation that answers with JSON records and takes plain values | The real API when run; `tests/api_responses.json` in tests |
 | `--from-redshift SCHEMA` | Table and column names from the catalogue. No row | Per table: a lookup by a column named like a key, or the whole table | Stand-in CSV files with the tables' columns and two made-up rows |
 
 More options: `--per-table N` (how many per table, default 3), `--query NAME`
 (keep only these; repeatable), `--source NAME` (the data source's name),
 `--base-url URL` (OpenAPI: where the API is, if not the document's first
-server), and for Redshift `--database`, `--workgroup` or `--cluster`,
+server), `--mask COLUMN` (with `--from-model`: mask this column too;
+repeatable), and for Redshift `--database`, `--workgroup` or `--cluster`,
 `--db-user`, `--secret-arn`, `--table`, `--aws-profile`, `--aws-region`.
 `--from-redshift` needs `agentcraft2-aws` installed beside the command:
 `python -m pip install agentcraft2-aws`.

@@ -2379,7 +2379,8 @@ async def classify(
 <thead><tr><th>Option</th><th>Type</th><th>Default</th><th>Meaning</th></tr></thead>
 <tbody>
 <tr><td><span class="var">data_dir</span></td><td>path</td><td><span class="tag">required</span></td><td>Directory of CSV files. Each file becomes a table.</td></tr>
-<tr><td><span class="var">queries_dir</span></td><td>path</td><td><span class="tag">required</span></td><td>Directory of named query files.</td></tr>
+<tr><td><span class="var">queries_dir</span></td><td>path</td><td><span class="muted">not set</span></td><td>Directory of named query files.</td></tr>
+<tr><td><span class="var">queries_module</span></td><td>text</td><td><span class="muted">not set</span></td><td>Instead of <code>queries_dir</code>: the import name of a module of the service whose <code>QUERIES</code> maps each query&#x27;s name to its text (the header lines, then the SQL). It lets a service keep a query beside the tool that uses it. Exactly one of <code>queries_dir</code> and <code>queries_module</code> is given.</td></tr>
 <tr><td><span class="var">dialect</span></td><td>text</td><td><code>redshift</code></td><td>The dialect the queries are written in.</td></tr>
 <tr><td><span class="var">timeout_seconds</span></td><td>number</td><td><code>30.0</code></td><td>How long one query may run.</td></tr>
 </tbody></table></div>
@@ -2614,6 +2615,9 @@ async def classify(
 <tr><td><span class="var">--no-pin</span></td><td><code>off</code></td><td>Do not pin the tools&#x27; input schemas now.</td></tr>
 <tr><td><span class="var">--force</span></td><td><code>off</code></td><td>Overwrite files that exist and differ.</td></tr>
 <tr><td><span class="var">--from-csv</span></td><td><span class="muted">none</span></td><td>Propose the tools from the CSV files in this folder, and copy the files in.</td></tr>
+<tr><td><span class="var">--from-model</span></td><td><span class="muted">none</span></td><td>Make the tools from the query files given with --queries, using the data_model.csv in this folder, and copy the files in.</td></tr>
+<tr><td><span class="var">--queries</span></td><td><span class="muted">none</span></td><td>With --from-model: the folder of query files. Each file is one tool.</td></tr>
+<tr><td><span class="var">--mask</span></td><td><span class="muted">none</span></td><td>With --from-model: mask this column for analysts, besides those whose names look personal. May be repeated.</td></tr>
 <tr><td><span class="var">--from-openapi</span></td><td><span class="muted">none</span></td><td>Propose the tools from the GET operations of this OpenAPI 3 document.</td></tr>
 <tr><td><span class="var">--base-url</span></td><td><span class="muted">none</span></td><td>Where the API is. Default: the document&#x27;s.</td></tr>
 <tr><td><span class="var">--from-redshift</span></td><td><span class="muted">none</span></td><td>Propose the tools from the tables of this Redshift schema. Needs --database.</td></tr>
