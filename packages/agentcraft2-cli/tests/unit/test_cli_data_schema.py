@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -186,3 +189,25 @@ def test_leaving_out_a_table_that_is_not_there_says_what_was_meant(
 ) -> None:
     assert run("data", "model", "schema", data, "--exclude", "region") == 1
     assert "Did you mean regions?" in capsys.readouterr().err
+
+
+def test_output_that_is_piped_is_utf8_whatever_the_default_encoding(
+    data: Path, tmp_path: Path
+) -> None:
+    """A schema with an em dash in it was written in the code page of the system, not in UTF-8."""
+    rows = [
+        row("accounts", "uen", pk="Y", nullable="N", description="The client — its unique id."),
+    ]
+    write_model(rows, data / "data_model.csv")
+    environment = {**os.environ, "PYTHONIOENCODING": "cp1252"}
+    for extra in ([], ["--format", "json"]):
+        done = subprocess.run(  # noqa: S603 - this interpreter and fixed arguments
+            [sys.executable, "-m", "agentcraft2_cli", "data", "model", "schema", str(data), *extra],
+            capture_output=True,
+            env=environment,
+            check=False,
+        )
+        assert done.returncode == 0, done.stderr.decode("utf-8", "replace")
+        assert "\u2014".encode() in done.stdout
+        done.stdout.decode("utf-8")  # all of it is valid UTF-8
+        assert b"\r" not in done.stdout, "line endings are the same on every system"

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import sys
 from collections import Counter
 from pathlib import Path
 
@@ -54,6 +55,19 @@ def _read(path: Path) -> list[dict[str, str]]:
         raise CliError(
             str(error), fix="use the standard's columns; see ac2 data model draft"
         ) from error
+
+
+def _print_text(text: str) -> None:
+    """Print text for a person at a terminal, or for a file or a program reading a pipe.
+
+    A pipe or a file gets UTF-8 and ``\\n`` line endings on every system, so the same schema is the
+    same bytes everywhere. Otherwise a Windows system writes its code page (an em dash becomes one
+    byte that is not UTF-8) and ``\\r\\n``.
+    """
+    stream = sys.stdout
+    if not stream.isatty() and hasattr(stream, "reconfigure"):
+        stream.reconfigure(encoding="utf-8", newline="\n")
+    click.echo(text, nl=False)
 
 
 @click.group()
@@ -460,5 +474,5 @@ def schema(
         output.write_text(text, encoding="utf-8", newline="\n")
         click.echo(f"Wrote {output}: {size}.", err=True)
         return
-    click.echo(text, nl=False)
+    _print_text(text)
     click.echo(f"{size}.", err=True)
