@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sys
-from pathlib import Path
+from pathlib import PureWindowsPath
 from typing import Self
 
 import click
@@ -47,15 +47,24 @@ def invocation() -> str:
     A hint a person is meant to copy uses the form they ran, so it works where they are:
     ``python -m agentcraft2_cli`` when that is how they started it, otherwise the short name.
     """
-    script = Path(sys.argv[0])
+    script = _started_as()
     if script.name == "__main__.py" and script.parent.name == "agentcraft2_cli":
         return "python -m agentcraft2_cli"
     return "agentcraft2" if program_name() == "agentcraft2" else "ac2"
 
 
+def _started_as() -> PureWindowsPath:
+    """Return the path the command was started by, read with Windows rules.
+
+    Windows rules take a slash and a backslash as separators, so the name of a Windows script is
+    found on any system, and a path with slashes is read the same way.
+    """
+    return PureWindowsPath(sys.argv[0])
+
+
 def program_name() -> str:
     """Return the name the command was started under: ``ac2`` or ``agentcraft2``."""
-    started = Path(sys.argv[0]).name.lower().removesuffix(".exe").removesuffix(".py")
+    started = _started_as().name.lower().removesuffix(".exe").removesuffix(".py")
     return "ac2" if started == "ac2" else "agentcraft2"
 
 

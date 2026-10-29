@@ -2379,7 +2379,7 @@ async def classify(
 <thead><tr><th>Option</th><th>Type</th><th>Default</th><th>Meaning</th></tr></thead>
 <tbody>
 <tr><td><span class="var">data_dir</span></td><td>path</td><td><span class="tag">required</span></td><td>Directory of CSV files. Each file becomes a table.</td></tr>
-<tr><td><span class="var">queries_dir</span></td><td>path</td><td><span class="muted">not set</span></td><td>Directory of named query files.</td></tr>
+<tr><td><span class="var">queries_dir</span></td><td>path</td><td><span class="muted">not set</span></td><td>Directory of named query files. Name this or <code>queries_module</code>, not both.</td></tr>
 <tr><td><span class="var">queries_module</span></td><td>text</td><td><span class="muted">not set</span></td><td>Instead of <code>queries_dir</code>: the import name of a module of the service whose <code>QUERIES</code> maps each query&#x27;s name to its text (the header lines, then the SQL). It lets a service keep a query beside the tool that uses it. Exactly one of <code>queries_dir</code> and <code>queries_module</code> is given.</td></tr>
 <tr><td><span class="var">dialect</span></td><td>text</td><td><code>redshift</code></td><td>The dialect the queries are written in.</td></tr>
 <tr><td><span class="var">timeout_seconds</span></td><td>number</td><td><code>30.0</code></td><td>How long one query may run.</td></tr>
