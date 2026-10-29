@@ -9,6 +9,8 @@ import pytest
 
 from agentcraft2_cli.data_model import COLUMNS
 from agentcraft2_cli.data_model_schema import (
+    Join,
+    Schema,
     build_schema,
     estimate_tokens,
     render_json,
@@ -38,6 +40,7 @@ def model() -> list[dict[str, str]]:
         row("accounts", "revenue", datatype="decimal", description="Annual revenue in USD."),
         row("accounts", "since", datatype="date", description="First day as a client."),
         row("accounts", "email", uk="Y", description="Contact address, unique."),
+        row("accounts", "active", datatype="boolean", description="Whether the client is active."),
         row("claims", "claim_id", pk="Y", nullable="N", datatype="integer"),
         row("claims", "uen", fk="crm.accounts.uen", nullable="N"),
         row("claims", "status", description="Where the claim stands."),
@@ -59,7 +62,7 @@ def model() -> list[dict[str, str]]:
     ]
 
 
-def joins_of(schema, child: str) -> list:
+def joins_of(schema: Schema, child: str) -> list[Join]:
     return [j for j in schema.joins if j.child_table == child]
 
 
@@ -97,6 +100,7 @@ def test_a_composite_key_lists_every_column_in_order() -> None:
 def test_a_column_that_points_elsewhere_says_where() -> None:
     claims = next(t for t in build_schema(model()).tables if t.name == "claims")
     uen = next(c for c in claims.columns if c.name == "uen")
+    assert uen.references is not None
     assert (uen.references.table, uen.references.column) == ("accounts", "uen")
 
 
@@ -147,6 +151,7 @@ def test_a_soft_reference_to_a_column_that_is_not_a_key_is_not_for_joining() -> 
     assert (total.kind, total.cardinality, total.for_joining) == ("soft", "unknown", False)
     audits = next(t for t in schema.tables if t.name == "audits")
     column = next(c for c in audits.columns if c.name == "total")
+    assert column.references is not None
     assert column.references.kind == "relation"
 
 
@@ -184,6 +189,7 @@ def test_a_table_that_points_outside_the_choice_loses_the_join() -> None:
     assert schema.joins == ()
     claims = schema.tables[0]
     uen = next(c for c in claims.columns if c.name == "uen")
+    assert uen.references is not None
     assert uen.references.table == "accounts", "the column still says what it points at"
 
 
@@ -255,7 +261,7 @@ def write_data(folder: Path) -> Path:
     return folder
 
 
-def values_of(schema, table: str, column: str) -> tuple[str, ...]:
+def values_of(schema: Schema, table: str, column: str) -> tuple[str, ...]:
     found = next(t for t in schema.tables if t.name == table)
     return next(c for c in found.columns if c.name == column).values
 
@@ -359,6 +365,19 @@ def test_a_column_that_only_relates_is_marked_so_and_not_as_a_foreign_key() -> N
     assert "| total | decimal | yes | relates accounts.revenue |" in text
     assert "| owner | string | yes | relates accounts |" in text
     assert "| uen | string | yes | soft fk accounts.uen |" in text
+
+
+def test_boolean_columns_are_said_to_be_compared_with_true_or_false() -> None:
+    text = render_markdown(build_schema(model()))
+    assert (
+        "Boolean columns hold true or false: compare them with TRUE or FALSE, not with text."
+        in text
+    )
+
+
+def test_a_schema_without_boolean_columns_does_not_say_it() -> None:
+    text = render_markdown(build_schema(model(), tables=["claims"]))
+    assert "Boolean columns" not in text
 
 
 def test_the_dialect_is_whatever_was_asked_for() -> None:

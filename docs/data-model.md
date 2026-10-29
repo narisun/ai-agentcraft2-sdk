@@ -203,7 +203,10 @@ column is listed under **Other relations**, never as a condition, because a mode
 A prompt should hold what a question needs, not the whole model. `--table NAME` (repeat it) keeps
 those tables, `--related` adds the tables one join away in either direction, and `--exclude NAME`
 leaves a table out and names it nowhere, such as a table of answer keys the services do not offer.
-`--dialect` says which SQL to write; it is told to the model, not checked. On the rmprep-v2 data
+`--dialect` says which SQL to write; it is told to the model, not checked. A schema with a boolean
+column also says to compare it with `TRUE` or `FALSE`: a description may say "Yes/No" for what a
+file holds while the engine reads a boolean, and a model that follows the description writes
+`LOWER(in_compliance) = 'no'`, which fails. On the rmprep-v2 data
 (31 tables after leaving out the scenario table) the whole schema is about 13,100 tokens, two
 tables with their neighbours (`--table facilities --table covenants --related`, 8 tables) about
 4,300, and the two alone about 1,000.

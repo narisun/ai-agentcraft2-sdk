@@ -375,12 +375,20 @@ def render_markdown(schema: Schema) -> str:
         if chosen == schema.tables_in_model
         else f"{chosen} of {schema.tables_in_model} tables (the rest of the model is left out)"
     )
+    rules = (
+        f"SQL dialect: {schema.dialect}. Use only the tables, columns and joins listed here. "
+        "Join only as the join list says; do not guess a join. Dates are written YYYY-MM-DD and "
+        "timestamps in ISO 8601."
+    )
+    if any(c.type == "boolean" for t in schema.tables for c in t.columns):
+        # A description may say "Yes/No" for what a file holds; the engine reads a boolean.
+        rules += (
+            " Boolean columns hold true or false: compare them with TRUE or FALSE, not with text."
+        )
     lines = [
         "# Data schema",
         "",
-        f"SQL dialect: {schema.dialect}. Use only the tables, columns and joins listed here. "
-        "Join only as the join list says; do not guess a join. Dates are written YYYY-MM-DD and "
-        "timestamps in ISO 8601.",
+        rules,
         "",
         f"{size}, in {domains} {'domain' if domains == 1 else 'domains'}.",
     ]
