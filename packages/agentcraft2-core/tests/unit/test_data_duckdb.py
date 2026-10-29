@@ -295,7 +295,7 @@ async def test_queries_can_come_from_a_module_that_holds_their_text(
     await source.start()
     try:
         assert sorted(source.describe()) == ["holders"]
-        holders = [row["holder"] for row in (await source.query("holders")).as_dicts()]
+        holders = [str(row["holder"]) for row in (await source.query("holders")).as_dicts()]
         assert holders
         assert holders == sorted(holders)
     finally:
