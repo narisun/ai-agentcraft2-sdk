@@ -16,6 +16,12 @@ from agentcraft2_cli.data_model import (
 )
 from agentcraft2_cli.data_model_diff import compare_model
 from agentcraft2_cli.data_model_draft import draft_model, write_model
+from agentcraft2_cli.data_model_schema import (
+    build_schema,
+    estimate_tokens,
+    render_json,
+    render_markdown,
+)
 from agentcraft2_cli.data_model_validate import Finding, validate_data
 from agentcraft2_cli.errors import CliError
 
@@ -330,3 +336,129 @@ def validate(
     )
     if errors:
         raise click.exceptions.Exit(1)
+
+
+@model.command()
+@click.argument("data_dir", type=_FOLDER)
+@_MODEL
+@click.option(
+    "--table",
+    "tables",
+    multiple=True,
+    help="Only this table. Repeat it for more than one. By default every table.",
+)
+@click.option(
+    "--related",
+    is_flag=True,
+    help="Also the tables one join away from the --table ones, in either direction.",
+)
+@click.option(
+    "--exclude",
+    "excluded",
+    multiple=True,
+    help="Leave this table out, such as one the services do not offer, and say nothing "
+    "about it. Repeat it for more than one.",
+)
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["markdown", "json"]),
+    default="markdown",
+    show_default=True,
+    help="Markdown to put in a prompt, or JSON for a program.",
+)
+@click.option(
+    "-o",
+    "--output",
+    "output",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=None,
+    help="Write to this file. By default the schema is printed.",
+)
+@click.option(
+    "--values",
+    type=click.IntRange(min=0),
+    default=0,
+    help="List the different values of a text column that has at most this many. Read from the "
+    "data files, so off by default; keys are never listed.",
+)
+@click.option(
+    "--dialect",
+    default="redshift",
+    show_default=True,
+    help="The SQL dialect to tell the model to write. It is said, not checked.",
+)
+@click.option(
+    "--allow-problems",
+    is_flag=True,
+    help="Write the schema even if the model does not follow the standard.",
+)
+def schema(
+    data_dir: Path,
+    model_file: Path | None,
+    tables: tuple[str, ...],
+    related: bool,
+    excluded: tuple[str, ...],
+    output_format: str,
+    output: Path | None,
+    values: int,
+    dialect: str,
+    allow_problems: bool,
+) -> None:
+    """Write the tables, columns and joins of the data_model.csv for a model that writes SQL.
+
+    A model asked for SQL needs to know what it may use: which tables exist and what one row
+    of each is, what each column holds, which columns identify a row, and how tables join and
+    whether a join can repeat rows. This writes that from the model, as Markdown to put in a
+    prompt or as JSON for a program: an index of the tables, the join list, then one card per
+    table. The size is printed on the error stream, so the schema can be piped.
+
+    A prompt should hold what a question needs, not the whole model: give --table for the
+    tables, and --related for the ones next to them.
+
+    A model that does not follow the standard (a TODO left in a description, a column with no
+    type) is refused, because what is wrong would reach the prompt; fix it with
+    ac2 data model check, or give --allow-problems.
+
+    \b
+    Examples:
+      ac2 data model schema data
+      ac2 data model schema data --table claims --related -o claims-schema.md
+      ac2 data model schema data --exclude rm_scenarios
+      ac2 data model schema data --format json
+      ac2 data model schema data --values 8 --dialect duckdb
+    """
+    if related and not tables:
+        raise click.UsageError("--related needs at least one --table to start from")
+    rows = _read(_model_path(data_dir, model_file))
+    problems = [issue for issue in check_data_model(rows) if issue.level == "error"]
+    if problems and not allow_problems:
+        count = len(problems)
+        raise CliError(
+            f"the data model does not follow the standard: {count} "
+            f"{'problem' if count == 1 else 'problems'} would reach the prompt",
+            expected="a model with every description and type filled in",
+            actual="; ".join(str(issue) for issue in problems[:3]),
+            fix=f"fix them (see ac2 data model check {data_dir}), or give --allow-problems",
+        )
+    try:
+        chosen = build_schema(
+            rows,
+            data_dir=data_dir,
+            tables=list(tables) or None,
+            related=related,
+            exclude=excluded,
+            values=values,
+            dialect=dialect,
+        )
+    except ValueError as error:
+        raise CliError(str(error)) from error
+    text = render_json(chosen) if output_format == "json" else render_markdown(chosen)
+    count = len(chosen.tables)
+    size = f"{count} of {chosen.tables_in_model} tables, about {estimate_tokens(text)} tokens"
+    if output is not None:
+        output.write_text(text, encoding="utf-8", newline="\n")
+        click.echo(f"Wrote {output}: {size}.", err=True)
+        return
+    click.echo(text, nl=False)
+    click.echo(f"{size}.", err=True)

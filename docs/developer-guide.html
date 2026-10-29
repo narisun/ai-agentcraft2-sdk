@@ -2486,6 +2486,22 @@ async def classify(
 <tr><td><span class="var">-o, --output</span></td><td><span class="muted">none</span></td><td>Where to write the draft. By default data_model.csv in the data folder.</td></tr>
 <tr><td><span class="var">--force</span></td><td><code>off</code></td><td>Replace the file if it exists.</td></tr>
 </tbody></table></div>
+<h4 id="cli-data-model-schema"><code>agentcraft2 data model schema</code></h4>
+<p class="small">Write the tables, columns and joins of the data_model.csv for a model that writes SQL.</p>
+<pre class="usage">agentcraft2 data model schema [OPTIONS] DATA_DIR</pre>
+<div class="table-wrap"><table class="opts">
+<thead><tr><th>Flag</th><th>Default</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td><span class="var">--model</span></td><td><span class="muted">none</span></td><td>The data_model.csv to use. By default it is data_model.csv in the data folder.</td></tr>
+<tr><td><span class="var">--table</span></td><td><span class="muted">none</span></td><td>Only this table. Repeat it for more than one. By default every table.</td></tr>
+<tr><td><span class="var">--related</span></td><td><code>off</code></td><td>Also the tables one join away from the --table ones, in either direction.</td></tr>
+<tr><td><span class="var">--exclude</span></td><td><span class="muted">none</span></td><td>Leave this table out, such as one the services do not offer, and say nothing about it. Repeat it for more than one.</td></tr>
+<tr><td><span class="var">--format</span></td><td><code>markdown</code></td><td>Markdown to put in a prompt, or JSON for a program.</td></tr>
+<tr><td><span class="var">-o, --output</span></td><td><span class="muted">none</span></td><td>Write to this file. By default the schema is printed.</td></tr>
+<tr><td><span class="var">--values</span></td><td><code>0</code></td><td>List the different values of a text column that has at most this many. Read from the data files, so off by default; keys are never listed.</td></tr>
+<tr><td><span class="var">--dialect</span></td><td><code>redshift</code></td><td>The SQL dialect to tell the model to write. It is said, not checked.</td></tr>
+<tr><td><span class="var">--allow-problems</span></td><td><code>off</code></td><td>Write the schema even if the model does not follow the standard.</td></tr>
+</tbody></table></div>
 <h4 id="cli-data-model-validate"><code>agentcraft2 data model validate</code></h4>
 <p class="small">Check every value in the CSV files in DATA_DIR against the data_model.csv.</p>
 <pre class="usage">agentcraft2 data model validate [OPTIONS] DATA_DIR</pre>

@@ -4,7 +4,7 @@ A `data_model.csv` describes the CSV files of a data folder: what each table hol
 are identified, how tables join and what each column means. A person reads it to learn the data,
 and a model reads it to write queries, so a missing description is a missing fact.
 
-Three commands work with it:
+Five commands work with it:
 
 | Command | What it does |
 | --- | --- |
@@ -12,6 +12,7 @@ Three commands work with it:
 | `ac2 data model diff DATA_DIR` | Lists where the files differ from the model. Exit code 1 if they do. |
 | `ac2 data model check DATA_DIR` | Checks the model against the standard and the files. Exit code 1 on an error. |
 | `ac2 data model validate DATA_DIR` | Checks every value in the files against the model, with DuckDB. Exit code 1 on an error. |
+| `ac2 data model schema DATA_DIR` | Writes the tables, columns and joins for a model that writes SQL. |
 
 `--model FILE` names a model that is not `DATA_DIR/data_model.csv`, and `--output FILE` where the
 draft goes.
@@ -161,9 +162,70 @@ line and column.
 amount in the wrong currency, or a value outside the range the business allows; those need rules
 the model has no place for yet.
 
+## Writing the schema for a model that writes SQL
+
+`schema` turns the model into what a model needs to write SQL that runs: which tables exist and
+what one row of each is, what each column holds, which columns identify a row, and how tables
+join. It prints Markdown to put in a prompt, or JSON with `--format json`, and says on the other
+stream how many tables and about how many tokens it wrote, so the schema can be piped.
+
+```text
+# Data schema
+
+SQL dialect: redshift. Use only the tables, columns and joins listed here. Join only as the join
+list says; do not guess a join. Dates are written YYYY-MM-DD and timestamps in ISO 8601.
+
+## Tables
+| table | domain | what it holds | one row per |
+| accounts | crm | One row per client legal entity: identity, industry, size, ... | uen |
+
+## Joins
+- covenants.facility_id = facilities.facility_id (many-to-one)
+- accounts.connected_uen = accounts.uen (many-to-one, soft): may match nothing (each entry; ...)
+
+## Other relations
+- relationship.nii relates to product_profitability.revenue_nii (reconciliation)
+
+## covenants
+Domain: lending. Primary key: facility_id, name.
+| column | type | null | key | description |
+| facility_id | string | no | pk, fk facilities.facility_id | Facility key. |
+```
+
+A join says its **cardinality**: `many-to-one` when the column points at a key of the other table,
+`one-to-one` when it is also the whole key of its own table, and `unknown` when it points at a part
+of a composite key, which can repeat rows (the warning names the whole key). A **soft** join is one
+the model qualifies in brackets, where some rows may match nothing. A reference to a column that is
+not a key (a reconciliation of two amounts, an eligibility threshold) or between tables with no
+column is listed under **Other relations**, never as a condition, because a model that sees
+`relationship.nii = product_profitability.revenue_nii` will join on amounts.
+
+A prompt should hold what a question needs, not the whole model. `--table NAME` (repeat it) keeps
+those tables, `--related` adds the tables one join away in either direction, and `--exclude NAME`
+leaves a table out and names it nowhere, such as a table of answer keys the services do not offer.
+`--dialect` says which SQL to write; it is told to the model, not checked. On the rmprep-v2 data
+(31 tables after leaving out the scenario table) the whole schema is about 13,100 tokens, two
+tables with their neighbours (`--table facilities --table covenants --related`, 8 tables) about
+4,300, and the two alone about 1,000.
+
+`--values N` also lists the different values of a text column that has at most N of them (a segment,
+a status, a currency), most common first, because a model that has seen `Retail` does not write
+`'retail'`. Those values are **read from the data files** and copied into the prompt, so it is off
+unless asked for, the output says so, and a primary key, a unique column and a foreign key never list
+any. A long value is cut at 40 characters and one with a line break is left out. Check them before
+the prompt leaves the machine: a short column can still hold something that is not meant to be
+shared. On the rmprep-v2 data `--values 8` finds 61 such columns and adds about 1,700 tokens.
+
+A model that does not follow the standard (a `TODO` left in a description) is refused, since
+whatever is wrong would reach the prompt. `ac2 data model check` says what, and `--allow-problems`
+writes the schema anyway.
+
 ## Limits
 
-Everything inferred comes from the rows present. A column that is unique today may not be
+The schema repeats the model; it adds nothing the model lacks, and cannot say what a join means
+beyond the note in brackets. It does not know the real database: the dialect is only a sentence,
+and a query it leads to still has to be checked and run by something that enforces masking and row
+scope. Everything inferred comes from the rows present. A column that is unique today may not be
 tomorrow, and a column that is never empty may be allowed to be. Inference reads only column
 names, never meaning, so it cannot find a join between differently named columns, and it cannot
 write a description. The standard has no place yet for sensitivity, allowed values as data, or

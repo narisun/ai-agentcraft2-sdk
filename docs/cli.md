@@ -37,6 +37,7 @@ ac2 errors                              # list what failed, with the stack trace
 | `ac2 data model diff DATA_DIR` | List where the CSV files differ from an existing `data_model.csv`. Exit code 1 if there is a difference. |
 | `ac2 data model check DATA_DIR` | Check a `data_model.csv` against the standard and the files. Exit code 1 if there is an error. |
 | `ac2 data model validate DATA_DIR` | Check every value in the CSV files against the model with DuckDB: dates, numbers, yes/no values, empties, repeated keys, unmatched joins. Each problem has its file, row, line and column. Exit code 1 if there is an error. |
+| `ac2 data model schema DATA_DIR` | Write the tables, columns and joins of a `data_model.csv` for a model that writes SQL: an index with what a row is, the join list with cardinality, and a card per table. Markdown or JSON; `--table`, `--related` and `--exclude` choose tables, `--values N` adds the values of short text columns from the data. |
 | `ac2 eval [SERVICE]` | Run the evals of a service with a real model. |
 | `ac2 policy test` | Try the policy samples against the rules, and with `--opa` against OPA. |
 | `ac2 graph AGENT` | The graph of an agent as a Mermaid diagram. |
