@@ -918,19 +918,26 @@ async def test_the_engine_answers_what_duckdb_answers_for_the_models_own_sql(
             )
 
 
-async def test_the_old_lambda_arrow_gets_duckdbs_own_answer(
+async def test_the_old_lambda_arrow_is_never_switched_back_on_and_never_hidden(
     engine: RmqnaEngine, reference: duckdb.DuckDBPyConnection
 ) -> None:
-    # DuckDB 2.0 turned ``x -> ...`` off and says what to write instead. The engine neither
-    # switches it back on nor hides that answer: the model reads it and repairs its SQL.
+    # DuckDB 2.0 turned ``x -> ...`` off and says what to write instead. The engine never
+    # switches it back on. The statement it runs is the one the validator renders with sqlglot,
+    # and sqlglot 30 writes the arrow as ``LAMBDA x : ...``, so the statement then runs in the
+    # new syntax; with a sqlglot that leaves the arrow alone, the engine passes DuckDB's own
+    # answer on, and the model reads it and repairs its SQL. Either way the model gets a result
+    # or DuckDB's words, and never a silent wrong answer.
     arrow = "SELECT list_transform([1, 2, 3], x -> x * 2) AS doubled"
     try:
         reference.execute(arrow)
     except duckdb.Error:
-        with pytest.raises(SqlRefused) as refused:
-            await engine.execute(arrow)
-        assert refused.value.error_kind == "execution_error"
-        assert "lambda" in refused.value.message.lower()
+        try:
+            result = await engine.execute(arrow)
+        except SqlRefused as refused:
+            assert refused.error_kind == "execution_error"
+            assert "lambda" in refused.message.lower()
+        else:
+            assert result.rows == [[[2, 4, 6]]]
         if _duckdb_at_least(1, 3):
             assert (
                 await engine.execute(f"SELECT list_transform([1, 2, 3], {LAMBDA})")

@@ -47,7 +47,11 @@ def test_data_source_options_say_where_they_go(capsys: pytest.CaptureFixture[str
     assert run("config", "options", "data", "duckdb_csv") == 0
     out = capsys.readouterr().out
     assert 'Set them beside "kind" in each entry of AC2_DATA_SOURCES.' in out
-    assert "  queries_dir  (path; required)" in out
+    assert "  data_dir  (path; required)" in out
+    # The queries are in a folder of files or in a module of the service: one of the two.
+    assert "  queries_dir  (path; default not set)" in out
+    assert "Name this or queries_module, not both." in out
+    assert "  queries_module  (text; default not set)" in out
 
 
 def test_an_unknown_port_or_adapter_says_what_exists(capsys: pytest.CaptureFixture[str]) -> None:

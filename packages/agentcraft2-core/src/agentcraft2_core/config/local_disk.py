@@ -12,10 +12,11 @@ only the standard library.
 from __future__ import annotations
 
 import ctypes
+import ntpath
 import os
 import sys
 from collections.abc import Callable, Mapping
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 __all__ = ["DRIVE_REMOTE", "free_bytes", "local_disk_problem"]
 
@@ -56,18 +57,22 @@ def local_disk_problem(
         return None
     found = os.environ if environment is None else environment
     for candidate in dict.fromkeys((folder, folder.resolve())):
-        drive, _ = os.path.splitdrive(str(candidate))
+        # Windows rules whichever system asks: a Windows path read with another system's rules
+        # has no drive, and would be accepted.
+        text = str(candidate)
+        drive, _ = ntpath.splitdrive(text)
         if drive.startswith(("\\\\", "//")):
-            return f"{candidate} is a network path ({drive})"
+            return f"{text} is a network path ({drive})"
         if drive and drive_type(drive + "\\") == DRIVE_REMOTE:
-            return f"{candidate} is on a network drive ({drive})"
+            return f"{text} is on a network drive ({drive})"
+        where = PureWindowsPath(text)
         for name in _SYNCED:
             synced = (found.get(name) or "").strip()
-            if synced and candidate.is_relative_to(Path(synced)):
-                return f"{candidate} is inside OneDrive, which synchronizes it ({synced})"
+            if synced and where.is_relative_to(PureWindowsPath(synced)):
+                return f"{text} is inside OneDrive, which synchronizes it ({synced})"
         roaming = (found.get(_ROAMING) or "").strip()
-        if roaming and candidate.is_relative_to(Path(roaming)):
-            return f"{candidate} is in the roaming profile ({roaming}), which follows the user"
+        if roaming and where.is_relative_to(PureWindowsPath(roaming)):
+            return f"{text} is in the roaming profile ({roaming}), which follows the user"
     return None
 
 

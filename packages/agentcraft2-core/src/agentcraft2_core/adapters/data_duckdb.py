@@ -65,7 +65,7 @@ class DuckDbCsvOptions(OptionsModel):
 
     Attributes:
         data_dir: Directory of CSV files. Each file becomes a table.
-        queries_dir: Directory of named query files.
+        queries_dir: Directory of named query files. Name this or ``queries_module``, not both.
         queries_module: Instead of ``queries_dir``: the import name of a module of the service
             whose ``QUERIES`` maps each query's name to its text (the header lines, then the
             SQL). It lets a service keep a query beside the tool that uses it. Exactly one of
